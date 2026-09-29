@@ -16,10 +16,10 @@ import { findJourneys, bestJourney, reachableJourneys, journeyArriveAbs, toJourn
 import type { ConnectionOptions } from "./core/connections";
 import { availabilityCalendar, reachableCountCalendar, dateRange } from "./core/calendar";
 import { findHiddenTrains } from "./core/hidden";
-import { addDays, dayIndex, formatDuration } from "./util/time";
+import { addDays, dayIndex } from "./util/time";
 import { haversineKm } from "./util/geo";
 import { el, clear, isTouch } from "./ui/dom";
-import { buildShell, applyTheme, applyDensity, applyReduceMotion, applyMap, closeHeaderMenu } from "./ui/shell";
+import { buildShell, applyTheme, applyDensity, applyReduceMotion, applyMap, closeHeaderMenu, focusLangControl } from "./ui/shell";
 import { showPostcard } from "./ui/toast";
 import { createForm } from "./ui/form";
 import type { FormHandle, FormRefs, TripType, TripShape } from "./ui/form";
@@ -36,7 +36,7 @@ import {
   showSettingsModal,
 } from "./ui/modals";
 import { generateBookingUrl } from "./util/booking";
-import { t, setLang, getLang, isLang } from "./i18n";
+import { t, tn, formatDuration, setLang, getLang, isLang } from "./i18n";
 import * as store from "./state/store";
 import {
   MAX_JEUNE_URL,
@@ -1453,7 +1453,7 @@ function repaintFormCalendar(): void {
     } else {
       // Fixed N-night round trip: the days an N-night there-and-back is feasible.
       cal = stayCalendar(trains, o, d, windowDates, getawayOptsFor(fq), "nights");
-      calOpts = { title: t("form_cal_title"), hideTitle: true, count: (n: number) => t("getaway_nights", { n }), countLegend: t("cal_legend_nights") };
+      calOpts = { title: t("form_cal_title"), hideTitle: true, count: (n: number) => tn("getaway_nights", n), countLegend: t("cal_legend_nights") };
     }
   } else if (o) {
     if (!round) {
@@ -1464,7 +1464,7 @@ function repaintFormCalendar(): void {
       // pass runGetaways uses, whose per-day sweeps are memoized, so a repaint is cheap.
       cal = getawayIdeas(trains, o, windowDates, getawayOptsFor(fq)).perDay;
     }
-    calOpts = { title: t("form_cal_title"), hideTitle: true, count: (n: number) => t("best_cal_count", { n }), countLegend: t("cal_legend_dest") };
+    calOpts = { title: t("form_cal_title"), hideTitle: true, count: (n: number) => tn("best_cal_count", n), countLegend: t("cal_legend_dest") };
   } else {
     // Destination only (no origin): browse by ARRIVAL — which days you can reach `d`, and
     // from how many origins. One-way counts reachable origins; round/same-day counts the
@@ -1477,7 +1477,7 @@ function repaintFormCalendar(): void {
     } else {
       cal = reverseGetawayIdeas(trains, dest, windowDates, getawayOptsFor(fq)).perDay;
     }
-    calOpts = { title: t("form_cal_title"), hideTitle: true, count: (n: number) => t("best_cal_count", { n }), countLegend: t("cal_legend_origin") };
+    calOpts = { title: t("form_cal_title"), hideTitle: true, count: (n: number) => tn("best_cal_count", n), countLegend: t("cal_legend_origin") };
   }
   // In Flexible, overlay the departure→return range + the two-step prompt onto whichever
   // availability calendar was built above.
@@ -1956,7 +1956,7 @@ function runBrowse(c: RenderCtx, dir: "from" | "to"): void {
     });
     refs.results.append(
       render.listToolbarEl(
-        t(countKey, { n: total }),
+        tn(countKey, total),
         query.sort ?? "rec",
         sortOptions(["rec", "fastest", "closest", "name"]),
         onSort,
@@ -2018,7 +2018,7 @@ function runGetaways(c: RenderCtx, origin: string): void {
     showMap(origin, []);
     return;
   }
-  refs.results.append(el("p", { class: "muted count", text: t("getaway_count", { n: shown.length }) }));
+  refs.results.append(el("p", { class: "muted count", text: tn("getaway_count", shown.length) }));
   appendInChunks(refs.results, shown, (trip) => {
     // The headline metric that VARIES between places: hours on site when the best trip
     // there is same-day (0 nights), nights away otherwise — self-evident per place, no
@@ -2026,7 +2026,7 @@ function runGetaways(c: RenderCtx, origin: string): void {
     const metric =
       trip.nights === 0
         ? t("daytrip_cal_hours", { h: Math.round((trip.onSiteMin ?? 0) / 60) })
-        : t("getaway_nights", { n: trip.nights });
+        : tn("getaway_nights", trip.nights);
     return render.getawayCityRowEl(trip, c, { metric });
   });
   showMap(
@@ -2055,12 +2055,12 @@ function runReverseGetaways(c: RenderCtx, destination: string): void {
     showMap(destination, []);
     return;
   }
-  refs.results.append(el("p", { class: "muted count", text: t("rt_reverse_count", { n: shown.length }) }));
+  refs.results.append(el("p", { class: "muted count", text: tn("rt_reverse_count", shown.length) }));
   appendInChunks(refs.results, shown, (trip) => {
     const metric =
       trip.nights === 0
         ? t("daytrip_cal_hours", { h: Math.round((trip.onSiteMin ?? 0) / 60) })
-        : t("getaway_nights", { n: trip.nights });
+        : tn("getaway_nights", trip.nights);
     // openTo = the fixed destination: the card names the origin and opens origin → dest.
     return render.getawayCityRowEl(trip, c, { metric, openTo: destination });
   });
@@ -2090,7 +2090,7 @@ function runMultiCity(c: RenderCtx): void {
     showBaseMap();
     return;
   }
-  refs.title.textContent = t("multi_title", { n: legs.length });
+  refs.title.textContent = tn("multi_title", legs.length);
   const stations: string[] = [];
   const legSections: HTMLElement[] = [];
   const chosen: (Journey | null)[] = legs.map(() => null);
@@ -2337,7 +2337,7 @@ function runBestSearch(c: RenderCtx): void {
   });
   refs.results.append(
     render.listToolbarEl(
-      t("res_destinations", { n: trips.length }),
+      tn("res_destinations", trips.length),
       query.sort ?? "rec",
       sortOptions(["rec", "trains", "days", "closest", "fastest", "name"]),
       onSort,
@@ -2518,14 +2518,14 @@ function runOdSearch(c: RenderCtx): void {
     if (!hasNearby) refs.results.append(render.emptyEl(t("res_none")), render.hintEl(t("res_none_hint")));
   } else {
     if (spanDays) {
-      refs.results.append(el("p", { class: "muted count", text: t("res_itineraries", { n: journeys.length }) }));
+      refs.results.append(el("p", { class: "muted count", text: tn("res_itineraries", journeys.length) }));
       if (raw.length >= MAX_RESULTS) refs.results.append(render.hintEl(t("res_capped", { n: MAX_RESULTS })));
     }
     // Order the tickets: recommended (fastest, then earliest departure) by default, or by
     // arrival / departure / duration when the traveller picks a key.
     refs.results.append(
       render.listToolbarEl(
-        t("badge_trains", { n: journeys.length }),
+        tn("badge_trains", journeys.length),
         query.sort ?? "rec",
         sortOptions(["rec", "arrival", "departure", "fastest"]),
         onSort,
@@ -2824,7 +2824,7 @@ function runTripSearch(c: RenderCtx): void {
     const nights = dayIndex(retDate) - dayIndex(query.date);
     const { list, sameDay: retSameDay, arrAbs } = returnJourneys(retDate);
     retList.append(
-      el("p", { class: "muted ret-summary", text: retSameDay ? t("nights_sameday") : t("getaway_nights", { n: nights }) }),
+      el("p", { class: "muted ret-summary", text: retSameDay ? t("nights_sameday") : tn("getaway_nights", nights) }),
     );
     if (list.length === 0) {
       retList.append(render.emptyEl(t("ret_none")));
@@ -2854,7 +2854,7 @@ function runTripSearch(c: RenderCtx): void {
       render.calendarEl(retCal, retCtx, retDate, {
         title: t("rt_inbound"),
         // First cell is same-day (hours on site); every later cell is nights away.
-        count: (n, day) => (day.date === query.date ? t("daytrip_cal_hours", { h: n }) : t("getaway_nights", { n })),
+        count: (n, day) => (day.date === query.date ? t("daytrip_cal_hours", { h: n }) : tn("getaway_nights", n)),
         countLegend: t("cal_legend_nights"),
       }),
     );
@@ -2950,7 +2950,7 @@ function runTripSearch(c: RenderCtx): void {
   const outCalCtx: RenderCtx = { ...c, onSelectDay: onOutboundDay };
   const outCalEl = render.calendarEl(outCal, outCalCtx, query.date, {
     title: t("getaway_cal_title"),
-    count: (n) => (isSameDayTrip ? t("daytrip_cal_hours", { h: n }) : t("getaway_nights", { n })),
+    count: (n) => (isSameDayTrip ? t("daytrip_cal_hours", { h: n }) : tn("getaway_nights", n)),
     countLegend: isSameDayTrip ? t("cal_legend_hours") : t("cal_legend_nights"),
   });
   // The departure is already chosen (the form set it), so the possible-days calendar is
@@ -2995,7 +2995,7 @@ function runTripSearch(c: RenderCtx): void {
     const total = out.totalDurationMin + ret.totalDurationMin;
     tripTotal.textContent =
       nights > 0
-        ? t("trip_summary", { n: nights, dur: formatDuration(total) })
+        ? tn("trip_summary", nights, { dur: formatDuration(total) })
         : t("trip_summary_day", {
             onsite: formatDuration(Math.max(0, ret.departMin - (out.departMin + out.totalDurationMin))),
             dur: formatDuration(total),
@@ -3603,7 +3603,7 @@ function checkWatchedRoutes(): void {
     if (has) {
       notify(
         t("appName"),
-        `${deps.registry.label(r.origin)} → ${deps.registry.label(r.destination)} : MAX dispo`,
+        t("watch_available", { route: `${deps.registry.label(r.origin)} → ${deps.registry.label(r.destination)}` }),
       );
     }
   }
@@ -3634,7 +3634,7 @@ function buildLayout(root: HTMLElement): void {
 
   formApi = createForm({
     stationLabels: deps.registry.list().map((s) => s.label),
-    regions: [...new Set(deps.registry.all().map((s) => s.region).filter((r): r is string => Boolean(r)))].sort(),
+    regions: [...new Set(deps.registry.all().map((s) => s.region).filter((r): r is string => Boolean(r)))],
     today,
     bookingWindowDays: BOOKING_WINDOW_DAYS,
     maxTourFill: MAX_TOUR_FILL,
@@ -3681,6 +3681,7 @@ function buildLayout(root: HTMLElement): void {
       setLang(settings.lang);
       store.saveSettings(settings);
       rebuild();
+      focusLangControl(); // the rebuild replaced the select that had focus
     },
     onThemeChange: (theme) => {
       settings = { ...settings, theme };
@@ -3855,11 +3856,12 @@ function renderFavorites(): void {
   refs.favList.parentElement?.toggleAttribute("hidden", favs.length === 0);
   if (favs.length === 0) return;
   for (const f of favs) {
+    const route = `${deps.registry.label(f.origin)} → ${deps.registry.label(f.destination)}`;
     const row = el("div", { class: "fav-row" }, [
       el("button", {
         class: "fav-open",
         type: "button",
-        text: `${deps.registry.label(f.origin)} → ${deps.registry.label(f.destination)}`,
+        text: route,
         on: { click: () => fillRoute(f.origin, f.destination) },
       }),
       el("button", {
@@ -3867,6 +3869,7 @@ function renderFavorites(): void {
         type: "button",
         text: "✕",
         title: t("act_fav_remove"),
+        attrs: { "aria-label": `${t("act_fav_remove")} — ${route}` },
         on: {
           click: () => {
             store.toggleFavorite(f);
@@ -3939,6 +3942,7 @@ function renderSavedTrips(): void {
         type: "button",
         text: "✕",
         title: t("act_unsave"),
+        attrs: { "aria-label": `${t("act_unsave")} — ${info.label}` },
         on: {
           click: () => {
             store.removeTrip(trip.id);
@@ -3990,7 +3994,7 @@ function renderSavedPage(): void {
     refs.results.append(render.emptyEl(t("saved_none")));
     return;
   }
-  refs.results.append(el("p", { class: "muted count", text: t("saved_count", { n: trips.length }) }));
+  refs.results.append(el("p", { class: "muted count", text: tn("saved_count", trips.length) }));
   for (const trip of trips) {
     const info = savedTripInfo(trip);
     const card = el("div", { class: "saved-page-card" }, [
@@ -4007,6 +4011,7 @@ function renderSavedPage(): void {
         type: "button",
         text: "✕",
         title: t("act_unsave"),
+        attrs: { "aria-label": `${t("act_unsave")} — ${info.label}` },
         on: {
           click: () => {
             store.removeTrip(trip.id);

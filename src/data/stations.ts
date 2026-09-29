@@ -48,12 +48,39 @@ export function matchNorm(s: string): string {
     .trim();
 }
 
-/** Fallback display name for a station id not present in the registry. */
+const ACRONYMS = new Set(["tgv", "cdg", "sncf"]);
+// French articles and prepositions kept lower-case inside a name ("Brive-la-Gaillarde").
+const PARTICLES = new Set(["de", "des", "du", "la", "le", "les", "et", "sur", "en", "d", "l"]);
+// Names neither the casing rules nor a city's spelling can derive, by station id.
+const STATION_LABELS: Record<string, string> = {
+  "AEROPORT ROISSY CDG 2 TGV": "Aéroport Roissy CDG 2 TGV",
+  "LYON ST EXUPERY TGV.": "Lyon Saint-Exupéry TGV",
+  "ST PIERRE DES CORPS": "Saint-Pierre-des-Corps",
+  "BESANCON FRANCHE COMTE TGV": "Besançon Franche-Comté TGV",
+  "VALENCE TGV AUVERGNE RHONE ALPES": "Valence TGV Auvergne-Rhône-Alpes",
+  "SAINT ETIENNE CHATEAUCREUX": "Saint-Étienne Châteaucreux",
+  "LIMOGES BENEDICTINS": "Limoges-Bénédictins",
+  "ETAPLES   LE TOUQUET": "Étaples-Le Touquet",
+  "AIX LES BAINS LE REVARD": "Aix-les-Bains-Le Revard",
+};
+
+/**
+ * Fallback display name for a station id not present in the registry: each word
+ * capitalised, TGV/CDG upper-case, French particles lower-case after the first word.
+ */
 export function prettyLabel(id: string): string {
   return id
     .replace(/\s*\(intramuros\)/i, "")
+    .replace(/\s*\(/g, " (") // "CAUSSADE(TARN" -> "CAUSSADE (TARN"
+    .replace(/\.$/, "")
+    .trim()
     .toLowerCase()
-    .replace(/(^|[\s'-])([a-zà-ÿ])/g, (_m, p1: string, p2: string) => p1 + p2.toUpperCase());
+    .replace(/[a-zà-ÿ]+/g, (w: string, at: number) => {
+      if (ACRONYMS.has(w)) return w.toUpperCase();
+      if (at > 0 && PARTICLES.has(w)) return w;
+      return w[0]!.toUpperCase() + w.slice(1);
+    })
+    .replace(/\s+/g, " ");
 }
 
 interface CityInfo {
@@ -61,6 +88,26 @@ interface CityInfo {
   lng: number;
   city: string;
   region?: string;
+}
+
+/** A city reference's match key, and its written name when the key is that name (not an alias). */
+interface CityKey {
+  key: string;
+  info: CityInfo;
+  spelling?: string;
+}
+
+/** `label` with the words that spell `key` (a {@link matchNorm} key) replaced by `spelling`. */
+function respell(label: string, key: string, spelling: string): string {
+  const words = label.split(" ");
+  for (let i = 0; i < words.length; i++) {
+    for (let j = i + 1; j <= words.length; j++) {
+      if (matchNorm(words.slice(i, j).join(" ")) === key) {
+        return [...words.slice(0, i), spelling, ...words.slice(j)].join(" ");
+      }
+    }
+  }
+  return label;
 }
 
 // Station-name qualifiers stripped when guessing a city name for guide links.
@@ -75,36 +122,34 @@ export class StationRegistry {
   private index: { station: Station; hay: string; words: string[] }[] = [];
   // City coordinate references, longest key first, so specific names ("lille
   // flandres") win over short prefixes ("lille") when matching a station id.
-  private cityKeys: { key: string; info: CityInfo }[] = [];
+  private cityKeys: CityKey[] = [];
   // Ids actually present in the loaded dataset (i.e. bookable).
   private present = new Set<string>();
 
   constructor(stations: Station[]) {
     for (const s of stations) this.add(s);
 
-    const refMap = new Map<string, CityInfo>();
-    const addRef = (name: string | undefined, info: CityInfo): void => {
+    const refMap = new Map<string, CityKey>();
+    const addRef = (name: string | undefined, info: CityInfo, isName = false): void => {
       if (!name) return;
-      const k = matchNorm(name);
-      if (k && !refMap.has(k)) refMap.set(k, info);
+      const key = matchNorm(name);
+      if (key && !refMap.has(key)) refMap.set(key, { key, info, spelling: isName ? name : undefined });
     };
     // Seed from curated stations (authoritative coords), then the supplementary
     // city table for the smaller / international stations.
     for (const s of this.byId.values()) {
       if (!Number.isFinite(s.lat) || !Number.isFinite(s.lng)) continue;
       const info: CityInfo = { lat: s.lat, lng: s.lng, city: s.city ?? s.label, region: s.region };
-      addRef(s.label, info);
-      addRef(s.city, info);
+      addRef(s.label, info, true);
+      addRef(s.city, info, true);
       for (const a of s.aliases ?? []) addRef(a, info);
     }
     for (const c of CITY_REFERENCE) {
       const info: CityInfo = { lat: c.lat, lng: c.lng, city: c.name, region: c.region };
-      addRef(c.name, info);
+      addRef(c.name, info, true);
       for (const a of c.aliases ?? []) addRef(a, info);
     }
-    this.cityKeys = [...refMap.entries()]
-      .map(([key, info]) => ({ key, info }))
-      .sort((a, b) => b.key.length - a.key.length);
+    this.cityKeys = [...refMap.values()].sort((a, b) => b.key.length - a.key.length);
   }
 
   private add(s: Station): void {
@@ -115,16 +160,15 @@ export class StationRegistry {
     this.index.push({ station: s, hay, words: hay.split(/\s+/).filter(Boolean) });
   }
 
-  /** Best city reference matching a station id (whole-word, longest match). */
-  private matchCity(id: string): CityInfo | undefined {
+  /** Best city reference matching a station id (whole-word, longest match); `named`: by a name, not an alias. */
+  private matchCity(id: string, named = false): CityKey | undefined {
     const n = matchNorm(id);
     if (!n) return undefined;
-    for (const { key, info } of this.cityKeys) {
-      if (n === key || n.startsWith(`${key} `) || n.endsWith(` ${key}`) || n.includes(` ${key} `)) {
-        return info;
-      }
-    }
-    return undefined;
+    return this.cityKeys.find(
+      ({ key, spelling }) =>
+        (!named || spelling) &&
+        (n === key || n.startsWith(`${key} `) || n.endsWith(` ${key}`) || n.includes(` ${key} `)),
+    );
   }
 
   /**
@@ -139,13 +183,15 @@ export class StationRegistry {
       this.present.add(id);
       if (this.byId.has(id)) continue;
       const m = this.matchCity(id);
+      const named = this.matchCity(id, true);
       this.add({
         id,
-        label: prettyLabel(id),
-        lat: m ? m.lat : NaN,
-        lng: m ? m.lng : NaN,
-        city: m?.city,
-        region: m?.region,
+        // The table, else a city's own spelling, restores the accents and hyphens the id lost ("SETE" -> "Sète").
+        label: STATION_LABELS[id] ?? (named?.spelling ? respell(prettyLabel(id), named.key, named.spelling) : prettyLabel(id)),
+        lat: m ? m.info.lat : NaN,
+        lng: m ? m.info.lng : NaN,
+        city: m?.info.city,
+        region: m?.info.region,
       });
     }
   }
@@ -173,7 +219,7 @@ export class StationRegistry {
     const s = this.byId.get(id);
     if (s?.city) return s.city;
     const m = this.matchCity(id);
-    if (m) return m.city;
+    if (m) return m.info.city;
     return this.stripQualifiers(this.label(id));
   }
 

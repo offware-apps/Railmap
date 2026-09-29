@@ -17,17 +17,6 @@ export function minutesToHHMM(min: number): string {
   return `${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`;
 }
 
-/** Human duration, e.g. 135 -> "2 h 15", 14245 -> "9 d 21 h". */
-export function formatDuration(min: number): string {
-  const d = Math.floor(min / 1440);
-  const h = Math.floor((min % 1440) / 60);
-  const m = min % 60;
-  // Past a day, count days and drop minutes — "9 d 21 h" beats "237 h 25".
-  if (d > 0) return h === 0 ? `${d} d` : `${d} d ${h} h`;
-  if (h === 0) return `${m} min`;
-  return m === 0 ? `${h} h` : `${h} h ${String(m).padStart(2, "0")}`;
-}
-
 /** Days since the Unix epoch for a "YYYY-MM-DD" date (UTC, stable). */
 export function dayIndex(date: string): number {
   return Math.round(Date.parse(`${date}T00:00:00Z`) / 86_400_000);

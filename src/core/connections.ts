@@ -245,7 +245,7 @@ export function findJourneys(
     path.pop();
   }
 
-  let out = dedupe(results);
+  let out = mergeCoupled(dedupe(results));
   if (opts.maxDurationMin != null) {
     out = out.filter((j) => j.totalDurationMin <= opts.maxDurationMin!);
   }
@@ -265,6 +265,26 @@ export function findJourneys(
   );
   memo.set(key, out);
   return out;
+}
+
+/** Coupled trains (one physical train sold under two numbers: rows equal but for `trainNo`)
+ *  become one journey whose legs name every number ("12209 / 8609"). */
+function mergeCoupled(journeys: Journey[]): Journey[] {
+  const byRun = new Map<string, Journey>();
+  for (const j of journeys) {
+    const key = j.legs.map((l) => `${l.date}/${l.origin}>${l.destination}@${l.departMin}-${l.arriveMin}`).join("|");
+    const kept = byRun.get(key);
+    if (!kept) {
+      byRun.set(key, j);
+      continue;
+    }
+    const legs = kept.legs.map((l, i) => {
+      const no = j.legs[i]?.trainNo;
+      return no && !l.trainNo.split(" / ").includes(no) ? { ...l, trainNo: `${l.trainNo} / ${no}` } : l;
+    });
+    byRun.set(key, { ...kept, legs });
+  }
+  return [...byRun.values()];
 }
 
 /** The single best (shortest total) journey for a route, or null. */

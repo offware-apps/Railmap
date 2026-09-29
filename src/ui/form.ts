@@ -2,7 +2,7 @@ import type { SearchMode, StayChoice } from "../types";
 import type { ConnectionOptions } from "../core/connections";
 import { stayNights, stayFromNights } from "../core/roundtrip";
 import { el, clear, optionEl } from "./dom";
-import { t } from "../i18n";
+import { t, tn, getLang } from "../i18n";
 import { addDays, dayIndex } from "../util/time";
 
 export type TripType = "simple" | "multi" | "ideas";
@@ -179,6 +179,19 @@ export interface FormHandle {
 }
 
 const FLEX_MAX = 7;
+
+// The city table names countries in their own or French spelling; the region filter shows
+// them in the UI language by ISO code (French administrative regions are proper names).
+const COUNTRY_CODES: Record<string, string> = {
+  Allemagne: "DE", Belgique: "BE", España: "ES", Italia: "IT", Luxembourg: "LU", Suisse: "CH",
+};
+
+/** A region filter value as the UI language names it. */
+function regionName(region: string): string {
+  const code = COUNTRY_CODES[region];
+  if (!code || typeof Intl.DisplayNames !== "function") return region;
+  return new Intl.DisplayNames([getLang()], { type: "region" }).of(code) ?? region;
+}
 
 /**
  * A bare form <input> (accessible name comes from the wrapping field label).
@@ -1124,7 +1137,7 @@ export function createForm(props: FormProps): FormHandle {
     nightsControls,
   ]);
   const nightsLabel = (n: number): string =>
-    n <= 0 ? t("stay_sameday") : n === 1 ? t("stay_night_one") : t("stay_night_many", { n });
+    n <= 0 ? t("stay_sameday") : tn("stay_nights", n);
   /** Paint the toggle + stepper from (roundTrip, nights); hide the ±flex stepper on a return. */
   const syncTripShape = (): void => {
     onewayBtn.classList.toggle("active", !roundTrip);
@@ -1199,9 +1212,8 @@ export function createForm(props: FormProps): FormHandle {
   // the FORM (not just the results) and repaints whenever the route or the trip-shape
   // controls change, so a green day always means "a trip is possible that day" for the
   // CURRENT choice (one-way / round trip / same day). The controller paints it into
-  // `formCal` via render.calendarEl and keeps `formCalPicked` in step; the compact
-  // date-field pill above stays as the exact-date / ±flex keyboard entry (power users).
-  // A one-tap header collapses it so the form never grows unusably long on a phone.
+  // `formCal` via render.calendarEl and keeps `formCalPicked` in step; the date-field pill
+  // is hidden on this tab. A one-tap header collapses it so the form stays short on a phone.
   const formCal = el("div", { class: "form-cal-mount" });
   const formCalPicked = el("span", { class: "form-cal-picked muted small" });
   const formCalChevron = el("span", {
@@ -1235,7 +1247,10 @@ export function createForm(props: FormProps): FormHandle {
   const formCalBlock = el("div", { class: "form-cal-block" }, [formCalToggle, formCalBody]);
   const region = el("select", { class: "input" }, [
     optionEl("", t("region_any"), true),
-    ...props.regions.map((r) => optionEl(r, r, false)),
+    ...props.regions
+      .map((r) => ({ r, name: regionName(r) }))
+      .sort((a, b) => a.name.localeCompare(b.name, getLang()))
+      .map(({ r, name }) => optionEl(r, name, false)),
   ]) as HTMLSelectElement;
   const cities = inputEl("text", "station-list");
   cities.placeholder = t("cities_add");

@@ -1,8 +1,11 @@
+/** A count's wording per `Intl.PluralRules` category; `other` is the fallback (see `tn`). */
+export type Plural = Partial<Record<Intl.LDMLPluralRule, string>> & { other: string };
+
 export const fr = {
   appName: "MAX Finder",
   leg_add: "Ajouter un trajet",
   leg_remove: "Supprimer ce trajet",
-  multi_title: "Multiville — {n} trajet(s)",
+  multi_title: { one: "Multiville — {n} trajet", other: "Multiville — {n} trajets" } as Plural,
   multi_hint: "Renseignez au moins un trajet (départ et arrivée).",
   multi_incomplete: "Certains trajets n'ont pas de place MAX gratuite — cet itinéraire est incomplet.",
   ph_anywhere: "Toutes les gares",
@@ -67,7 +70,7 @@ export const fr = {
   res_to_title: "Pour arriver à {station} — {date}",
   res_od_title: "{origin} → {destination} — {date}",
   res_none: "Aucune place MAX pour ces critères.",
-  res_itineraries: "{n} itinéraires",
+  res_itineraries: { one: "{n} itinéraire", other: "{n} itinéraires" } as Plural,
   res_capped: "Affichage des {n} premiers — réduisez la durée du trajet ou ajoutez des filtres pour des résultats plus précis.",
   nearby_title: "Gares à moins de {km} km",
   nearby_hint: "Pas de train gratuit ? Payez un court trajet vers/depuis une gare voisine qui en a un.",
@@ -112,17 +115,22 @@ export const fr = {
   act_settings: "Réglages",
   res_none_hint: "Essayez plus de correspondances, une souplesse de dates plus large, les escales de nuit, ou retirez des filtres.",
   tour_none_hint: "Essayez d'élargir les jours par ville, de retirer une ville, ou d'autoriser plus de correspondances.",
-  res_destinations: "{n} destination(s)",
-  res_origins: "{n} origine(s)",
-  badge_trains: "{n} train(s)",
+  res_destinations: { one: "{n} destination", other: "{n} destinations" } as Plural,
+  res_origins: { one: "{n} origine", other: "{n} origines" } as Plural,
+  badge_trains: { one: "{n} train", other: "{n} trains" } as Plural,
 
   lbl_direct: "Direct",
   lbl_airport: "Aéroport",
   lbl_via: "via {hub}",
-  lbl_changes: "{n} correspondance(s)",
+  lbl_changes: { one: "{n} correspondance", other: "{n} correspondances" } as Plural,
   lbl_connection: "Correspondance de {dur} à {hub}",
   lbl_train: "Train {no}",
   lbl_dayoffset: "+{n} j",
+  dur_m: "{m} min",
+  dur_h: "{h} h",
+  dur_hm: "{h} h {m}",
+  dur_d: "{d} j",
+  dur_dh: "{d} j {h} h",
 
   act_book: "Réserver sur SNCF Connect",
   act_next: "Étape suivante",
@@ -138,7 +146,7 @@ export const fr = {
   act_fav_remove: "Retirer des favoris",
 
   cal_title: "Disponibilité sur 30 jours",
-  best_cal_count: "{n} destination(s)",
+  best_cal_count: { one: "{n} destination", other: "{n} destinations" } as Plural,
   cal_legend: "vert = place MAX dispo",
   cal_nearby: "accessible via une gare voisine",
   cal_legend_nearby: "ambre = via une gare voisine",
@@ -166,6 +174,8 @@ export const fr = {
   fav_title: "Favoris",
 
   map_title: "Carte",
+
+  watch_available: "{route} : place MAX dispo",
 
   foot_updated: "Données mises à jour : {date}",
   foot_sample: "données d'exemple",
@@ -218,8 +228,8 @@ export const fr = {
   nights_sameday: "Journée",
   getaway_cal_title: "Jours de départ possibles",
   getaway_days_hint: "{n} jours de départ possibles vers cette ville sur la période réservable. Ouvrez la ville pour voir lesquels.",
-  getaway_count: "{n} aller(s)-retour(s) possible(s)",
-  getaway_nights: "{n} nuit(s) sur place",
+  getaway_count: { one: "{n} aller-retour possible", other: "{n} allers-retours possibles" } as Plural,
+  getaway_nights: { one: "{n} nuit sur place", other: "{n} nuits sur place" } as Plural,
   getaway_none: "Aucun aller-retour MAX pour ces critères.",
 
   act_save: "Enregistrer",
@@ -227,9 +237,9 @@ export const fr = {
   act_unsave: "Retirer des trajets enregistrés",
   saved_title: "Trajets enregistrés",
   saved_see_all: "Voir tout ({n})",
-  saved_count: "{n} trajet(s) enregistré(s)",
+  saved_count: { one: "{n} trajet enregistré", other: "{n} trajets enregistrés" } as Plural,
   saved_none: "Aucun trajet enregistré pour l'instant.",
-  trip_summary: "{n} nuit(s) · {dur} de trajet aller-retour",
+  trip_summary: { one: "{n} nuit · {dur} de trajet aller-retour", other: "{n} nuits · {dur} de trajet aller-retour" } as Plural,
   trip_summary_day: "Aller-retour dans la journée · {onsite} sur place · {dur} de trajet",
   trip_summary_oneway: "Aller simple · {date} · {dur}",
   trip_more_dates: "Voir toutes les dates",
@@ -261,8 +271,7 @@ export const fr = {
   // Nights stepper (shown for a round trip): label + the value text (0 → "Journée",
   // 1 → "1 nuit", N → "N nuits") + the −/+ button aria-labels.
   stay_nights_label: "Durée sur place",
-  stay_night_one: "1 nuit",
-  stay_night_many: "{n} nuits",
+  stay_nights: { one: "{n} nuit", other: "{n} nuits" } as Plural,
   stay_fewer_nights: "Moins de nuits",
   stay_more_nights: "Plus de nuits",
   act_book_out: "Réserver l'aller",
@@ -280,7 +289,7 @@ export const fr = {
   rt_finder_title: "Où s'évader ?",
   rt_need_origin: "Ajoutez un départ pour voir où aller et revenir.",
   rt_reverse_title: "D’où partir pour rejoindre {station} ?",
-  rt_reverse_count: "{n} point(s) de départ possible(s)",
+  rt_reverse_count: { one: "{n} point de départ possible", other: "{n} points de départ possibles" } as Plural,
   cal_legend_origin: "le nombre = départs ce jour",
   rt_return_moved: "Retour déplacé au premier jour possible après votre nouvel aller.",
   keys_roundtrip: "r : aller simple / aller-retour",

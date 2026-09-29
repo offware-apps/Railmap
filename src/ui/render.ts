@@ -8,8 +8,8 @@ import type { RoutePair } from "../state/store";
 import { el } from "./dom";
 import { isNightTrain } from "../core/search";
 import { isAirportStation } from "../data/stations";
-import { formatDuration, dayIndex, addDays } from "../util/time";
-import { t } from "../i18n";
+import { dayIndex, addDays } from "../util/time";
+import { t, tn, formatDuration } from "../i18n";
 
 // Monotonic id source for wiring aria-labelledby (a calendar's <h3> to its grid).
 let uidSeq = 0;
@@ -403,13 +403,15 @@ export function journeyEl(
 /** A favourite-toggle star button for a route, with live aria/label updates. */
 function favStarEl(route: RoutePair, ctx: RenderCtx): HTMLElement {
   const favLabel = (): string => (ctx.isFavorite(route) ? t("act_fav_remove") : t("act_fav_add"));
+  // The accessible name carries the route: a list of stars all reading "Add to favorites" says nothing.
+  const name = (): string => `${favLabel()} — ${ctx.label(route.origin)} → ${ctx.label(route.destination)}`;
   return el(
     "button",
     {
       class: ctx.isFavorite(route) ? "star is-fav" : "star",
       type: "button",
       title: favLabel(),
-      attrs: { "aria-pressed": String(ctx.isFavorite(route)), "aria-label": favLabel() },
+      attrs: { "aria-pressed": String(ctx.isFavorite(route)), "aria-label": name() },
       on: {
         click: (e) => {
           ctx.onToggleFavorite(route);
@@ -417,9 +419,8 @@ function favStarEl(route: RoutePair, ctx: RenderCtx): HTMLElement {
           const now = ctx.isFavorite(route);
           b.classList.toggle("is-fav", now);
           b.setAttribute("aria-pressed", String(now));
-          const lbl = now ? t("act_fav_remove") : t("act_fav_add");
-          b.setAttribute("aria-label", lbl);
-          b.title = lbl;
+          b.setAttribute("aria-label", name());
+          b.title = favLabel();
         },
       },
     },
@@ -453,7 +454,7 @@ export function groupCardEl(
   const month = stat?.trains ?? group.count;
   const dayPart =
     flexDays > 0 ? t("stat_flex_month", { day: dayCount, n: flexDays, month }) : t("stat_day_month", { day: dayCount, month });
-  const summary = stat ? dayPart : t("badge_trains", { n: dayCount });
+  const summary = stat ? dayPart : tn("badge_trains", dayCount);
 
   const meta: HTMLElement[] = [];
   if (stat) {
@@ -465,7 +466,7 @@ export function groupCardEl(
       }),
     );
   } else {
-    meta.push(el("span", { text: t("badge_trains", { n: group.count }) }));
+    meta.push(el("span", { text: tn("badge_trains", group.count) }));
   }
   meta.push(el("bdi", { text: formatDuration(group.minDurationMin) }));
 
@@ -662,13 +663,13 @@ export function getawayCityRowEl(
   const changeChip =
     changes === 0
       ? el("span", { class: "chip chip-direct", text: t("lbl_direct") })
-      : el("span", { class: `chip chip-changes chip-changes-${Math.min(changes, 2)}`, text: t("lbl_changes", { n: changes }) });
+      : el("span", { class: `chip chip-changes chip-changes-${Math.min(changes, 2)}`, text: tn("lbl_changes", changes) });
   const main = el(
     "button",
     {
       class: "dest-main dest-main-stacked",
       type: "button",
-      attrs: { "aria-label": `${ctx.label(named)} — ${opts.metric ?? t("lbl_changes", { n: changes })}` },
+      attrs: { "aria-label": `${ctx.label(named)} — ${opts.metric ?? tn("lbl_changes", changes)}` },
       // Open on the idea's OWN start day (its best there-and-back), so the round trip is
       // feasible — not anchored on today, which may have only an outbound and no return.
       on: { click: () => ctx.onOpenRoute(routeOrigin, routeDest, { date: trip.outbound.date }) },
@@ -742,13 +743,13 @@ export function bestTripRowEl(trip: BestTrip, ctx: RenderCtx, trains?: number): 
   chips.push(
     changes === 0
       ? el("span", { class: "chip chip-direct", text: t("lbl_direct") })
-      : el("span", { class: `chip chip-changes chip-changes-${Math.min(changes, 2)}`, text: t("lbl_changes", { n: changes }) }),
+      : el("span", { class: `chip chip-changes chip-changes-${Math.min(changes, 2)}`, text: tn("lbl_changes", changes) }),
   );
   if (trains != null && trains > 0) {
     chips.push(
       el("span", {
         class: "stat-chip",
-        text: t("badge_trains", { n: trains }),
+        text: tn("badge_trains", trains),
         attrs: { title: t("stat_window_hint", { trains, days: trip.days ?? 0 }) },
       }),
     );
@@ -925,7 +926,7 @@ export function calendarEl(
   },
 ): HTMLElement {
   const neutral = opts?.neutral === true;
-  const countText = opts?.count ?? ((n: number) => t("badge_trains", { n }));
+  const countText = opts?.count ?? ((n: number) => tn("badge_trains", n));
   const showCount = opts?.showCount !== false && !neutral;
   // What the per-cell number means (trains on a route, or destinations per day).
   const countLegend = opts?.countLegend ?? t("cal_legend_count");
@@ -1098,7 +1099,7 @@ export function tripViewEl(outbound: Journey, ctx: RenderCtx, inbound?: Journey)
   if (inbound) {
     const nights = dayIndex(inbound.date) - dayIndex(outbound.date);
     if (nights > 0) {
-      summary = t("trip_summary", { n: nights, dur: formatDuration(totalTravel) });
+      summary = tn("trip_summary", nights, { dur: formatDuration(totalTravel) });
     } else {
       // Same-day round trip: surface how long you actually get in the city. Use the
       // outbound's ABSOLUTE arrival (departMin + span), not the last leg's own-date

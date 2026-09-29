@@ -52,7 +52,12 @@ await page.waitForFunction(
 );
 await new Promise((r) => setTimeout(r, 500));
 
-let html = await page.evaluate(() => "<!doctype html>\n" + document.documentElement.outerHTML);
+// The form's date popovers live in <body>, outside #app, where hydration never removes
+// them: drop them so the page carries no stale French dialogs next to the live ones.
+let html = await page.evaluate(() => {
+  for (const pop of document.querySelectorAll("body > .datepop")) pop.remove();
+  return "<!doctype html>\n" + document.documentElement.outerHTML;
+});
 await browser.close();
 server.close();
 

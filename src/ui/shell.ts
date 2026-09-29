@@ -83,6 +83,13 @@ export function closeHeaderMenu(): void {
   }
 }
 
+/** Focus the language select, opening the overflow menu first where it holds it (phones). */
+export function focusLangControl(): void {
+  const btn = document.querySelector<HTMLButtonElement>(".header-nav > .menu-btn");
+  if (btn && getComputedStyle(btn).display !== "none" && btn.getAttribute("aria-expanded") !== "true") btn.click();
+  document.querySelector<HTMLSelectElement>(".menu-selects select")?.focus();
+}
+
 // The shell is rebuilt on every language change; the previous drawer's media-query
 // and resize listeners would otherwise pile up, each keeping a detached drawer alive
 // and being resized. buildShell tears the old one down before wiring a new one.

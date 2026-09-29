@@ -37,16 +37,23 @@ function closeButton(dialog: HTMLDialogElement, variant: "primary" | "ghost"): H
   });
 }
 
+let settingSeq = 0;
+
 /**
  * A labelled toggle switch (role="switch") for the settings modal — same control as
  * the form's booleans, state read from the knob position + ✓/✕, not colour alone.
  */
 function settingSwitch(label: string, hint: string, on: boolean, onChange: (v: boolean) => void): HTMLElement {
   let state = on;
+  const id = `set-${(settingSeq += 1)}`;
   const knob = el("span", { class: "switch-knob", attrs: { "aria-hidden": "true" } });
   const toggle = el(
     "button",
-    { class: `switch${state ? " is-on" : ""}`, type: "button", attrs: { role: "switch", "aria-checked": String(state) } },
+    {
+      class: `switch${state ? " is-on" : ""}`,
+      type: "button",
+      attrs: { role: "switch", "aria-checked": String(state), "aria-labelledby": `${id}-l`, ...(hint ? { "aria-describedby": `${id}-h` } : {}) },
+    },
     [el("span", { class: "switch-track", attrs: { "aria-hidden": "true" } }, [knob])],
   );
   const sync = (): void => {
@@ -60,8 +67,8 @@ function settingSwitch(label: string, hint: string, on: boolean, onChange: (v: b
   });
   return el("div", { class: "set-row" }, [
     el("div", { class: "set-row-text" }, [
-      el("span", { class: "set-row-label", text: label }),
-      ...(hint ? [el("span", { class: "set-row-hint muted small", text: hint })] : []),
+      el("span", { class: "set-row-label", text: label, attrs: { id: `${id}-l` } }),
+      ...(hint ? [el("span", { class: "set-row-hint muted small", text: hint, attrs: { id: `${id}-h` } })] : []),
     ]),
     toggle,
   ]);

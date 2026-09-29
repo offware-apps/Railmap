@@ -32,16 +32,17 @@ Flexible again. The stepper (and the pill) are hidden for one-way. `r` toggles o
 round trip (keeping the nights count, never Flexible); `1/2/3` switch tabs. Toggling,
 stepping, or picking Flexible re-runs in place (no second Search tap when origin +
 destination + date are set). Legacy `?rt=day` / `?rt=round` / `?rdate=` deep links still
-resolve (rt=day or rdate==date → round trip, stepper on 0; a later rdate → the matching
-nights; `rt=round` or an rdate more than 3 nights out → Flexible). Internally the stay maps
-to the `StayChoice` model (`sameday`/`n1..n3`/`flexible`); Flexible carries its explicit
+resolve (rt=day or rdate==date → round trip, stepper on 0; a later rdate → that many fixed
+nights; a bare `rt=round` with no rdate → Flexible). Internally the stay
+maps to the `StayChoice` model (`sameday`/`nN`/`flexible`); Flexible carries its explicit
 return date on `query.returnDate` (URL `stay=flex` + `rdate`).
 
 The **Trip tab's date picker is a live availability calendar on the form itself**
 (`repaintFormCalendar` in `src/app.ts`, painted into `refs.formCalendar` via
-`render.calendarEl`). It sits under the date + trip-shape row behind a one-tap
-**"When to leave?"** header (which also shows the picked departure) and is **collapsed by
-default** so the form stays short on a phone — one tap opens the month to change the day.
+`render.calendarEl`). It sits under the trip-shape row behind a one-tap
+**"When to leave?"** header (which also shows the picked departure) and is **open by
+default**, so the availability grid is there from the start; one tap on the header
+collapses it to keep the form short on a phone.
 The header names the calendar once (the in-body `<h3>` is rendered `sr-only` via
 `calendarEl`'s `hideTitle`, so "When to leave?" isn't written twice). It **recomputes whenever
 anything it is derived from changes** — origin, destination, the Aller simple / Aller-retour
@@ -74,8 +75,9 @@ the post-reload "press Search" prompt.
 Tapping a green day sets the departure (`query.date` + the form's date field); with both
 endpoints filled it also shows/refreshes that day's trip in place. It reuses the same option
 helpers (`odJourneyOptsFor` / `getawayOptsFor`) as the real search, so the per-day journey
-sweeps hit the warm memo caches; origin typing is debounced. The compact date pill above it
-stays as the exact-date / ±flex keyboard entry for power users.
+sweeps hit the warm memo caches; origin typing is debounced. The Trip tab has no separate
+date field: this calendar is its only date picker (the Multi-city tab keeps its own date
+pills).
 
 **In Flexible mode the same inline calendar becomes a departure→return RANGE picker**
 (`pickFormRange`, driven by `calendarEl`'s `range` option). The **first tap sets the
@@ -138,8 +140,8 @@ span applied to the lists only, and a day could read green while its list was em
    else nights) + a possible-start-days calendar. Tap a day → narrows to that day
    (auto-scrolls to results). Tap a destination → opens the round trip.
    - Ranking: `sortGetaways` puts most hours-on-site first for same-day trips.
-   - A minimum-on-site gate exists in core (`minOnSiteMin`, default 4h); NOT yet exposed as
-     an Advanced control. (Open item.)
+   - The same-day minimum time on site (`minOnSiteMin`, default 4 h) is the form's
+     **Minimum time there** select (2 to 8 h, URL `stayh`), shown for a same-day round trip.
 5. **Only To** → reverse browse (`runBrowse` "to"): where you can come *from* to reach the
    station. With a **round trip / stay** chosen and only a destination, this is a **reverse
    round-trip discovery** — the origins you can round-trip *from* to reach this station,
@@ -179,7 +181,6 @@ either an all-days overview or one specific day. Tap → open the route.
 
 ## Known open items (see docs/trip-redesign.md for the audit plan)
 
-- Expose the minimum-time-on-site gate in Advanced (discovery).
 - Collapse the two save systems (favorite star + Save bookmark) into one.
 - One `openRoute()` primitive (list cards / favorites / map pins behave consistently).
 - One home for the availability calendar (form popover vs results).
