@@ -238,7 +238,7 @@ export function showBookingModal(journey: Journey, ctx: RenderCtx): void {
         ]),
         el("a", {
           class: "btn btn-primary book-step-btn",
-          href: ctx.bookUrl(leg.origin, leg.destination, leg.date, leg.depart),
+          href: ctx.bookUrl(leg.origin, leg.destination, leg.date, leg.depart, leg.operator),
           attrs: { target: "_blank", rel: "noopener noreferrer" },
           text: t("act_book_leg", { n: i + 1 }),
         }),

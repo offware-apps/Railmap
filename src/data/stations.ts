@@ -150,6 +150,20 @@ export class StationRegistry {
   }
 
   /**
+   * Add stations another network serves (Interrail across Europe), bookable and placed by
+   * that network. Known ids stay as they are; {@link setPresent} drops the new ones again.
+   */
+  addPlaces(stations: Station[]): void {
+    this.exact = null;
+    for (const s of stations) {
+      this.present.add(s.id);
+      if (this.byId.has(s.id)) continue;
+      this.extra.add(s.id);
+      this.add(s);
+    }
+  }
+
+  /**
    * Swap in another dataset's stations (a pass switch): forget the stations the previous
    * dataset added and what it marked bookable, then {@link addMissing} this one's.
    */

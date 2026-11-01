@@ -1,6 +1,7 @@
 import { loadDataset, type Dataset } from "./data/dataset";
-import { SNCF_PROFILE, parseCard, profileForCard, type DatasetProfile } from "./data/profile";
-import { StationRegistry } from "./data/stations";
+import { SNCF_PROFILE, INTERRAIL_PROFILE, parseCard, profileForCard, type DatasetProfile } from "./data/profile";
+import { operatorById, setOperatorBooking } from "./data/operators";
+import { StationRegistry, prettyLabel } from "./data/stations";
 import type { CardType, SearchQuery, SearchMode, MaxTrain, Journey, SortKey, CalendarDay, StayChoice } from "./types";
 import { stayNights, stayFromNights } from "./core/roundtrip";
 import {
@@ -20,7 +21,7 @@ import {
   type Getaway,
 } from "./core/getaways";
 import { planTours, planTourInOrder, planTourGreedy, arrivalDate, type Tour } from "./core/tour";
-import { findJourneys, bestJourney, reachableJourneys, journeyArriveAbs, catchableAfter, toJourney, MAX_RESULTS } from "./core/connections";
+import { findJourneys, bestJourney, reachableJourneys, journeyArriveAbs, catchableAfter, toJourney, setJourneySource, MAX_RESULTS } from "./core/connections";
 import type { ConnectionOptions } from "./core/connections";
 import { availabilityCalendar, reachableCountCalendar, dateRange } from "./core/calendar";
 import { findHiddenTrains } from "./core/hidden";
@@ -64,6 +65,16 @@ import {
 } from "./config";
 import { filterOptsFor, odConnOptsFor, odJourneyOptsFor, getawayOptsFor } from "./core/queryOpts";
 import { warmSearch } from "./search/searchClient";
+import {
+  loadEurope,
+  europeDirectory,
+  cachedJourneys,
+  searchJourneys,
+  cachedReach,
+  searchReach,
+  returnDates,
+} from "./europe/client";
+import type { EuropeDirectory } from "./europe/europe.worker";
 import { notify } from "./pwa/register";
 
 interface Deps {
@@ -100,6 +111,8 @@ const BOOKING_WINDOW_DAYS = 30;
 const APP_TITLE = document.title;
 // Cap on connection-only ("via") destinations appended to a browse list.
 const MAX_VIA_RESULTS = 30;
+/** The same on Interrail across Europe, where many more places are a train or two away. */
+const EUROPE_VIA_RESULTS = 80;
 // Step-wise Back INSIDE a multi-step flow (the round-trip Aller/Retour accordion, the
 // multi-city legs). While a later step is active, Back re-opens the previous step first
 // — walking the flow backwards — instead of exiting it. The current render registers a
@@ -642,6 +655,7 @@ export function initApp(root: HTMLElement, dataset: Dataset, registry: StationRe
   // Every station present in the dataset becomes searchable (the curated registry
   // only covers map coordinates for the major ones).
   registry.addMissing(dataset.trains.flatMap((t) => [t.origin, t.destination]));
+  void startEurope();
 
   today = new Date().toISOString().slice(0, 10);
   query = store.urlHasQuery()
@@ -769,9 +783,115 @@ function useDataset(dataset: Dataset): void {
   };
   setSeatUnknown(!deps.profile.seatKnown);
   deps.registry.setPresent(dataset.trains.flatMap((tr) => [tr.origin, tr.destination]));
+  setJourneySource(null);
+  void startEurope();
   formApi.setStationLabels(deps.registry.list().map((s) => s.label));
   const updated = rootRef.querySelector(".updated");
   if (updated) updated.textContent = footerUpdatedText();
+  deferFormCalRepaint();
+}
+
+// --- Interrail across Europe -----------------------------------------------------
+
+/** Interrail searches every operator's trains (train-api's trip bundles), not SNCF's alone. */
+function europeOn(): boolean {
+  return deps.profile.id === INTERRAIL_PROFILE.id && europeDirectory() !== null;
+}
+
+/**
+ * On Interrail, load every operator's trains in the background (once) and add their
+ * stations. Resolves when they are in, or right away for MAX or when they can't load.
+ */
+function startEurope(): Promise<void> {
+  if (deps.profile.id !== INTERRAIL_PROFILE.id) return Promise.resolve();
+  // SNCF's open data has no positions: the app's own place its stations among the others.
+  const coords: Record<string, [number, number]> = {};
+  for (const s of deps.registry.all()) {
+    const at = deps.registry.coords(s.id);
+    if (at) coords[s.id] = at;
+  }
+  // The page's train-api base names its v1 files; the trip bundles sit beside them, under /v2/.
+  return loadEurope(trainApiBase().replace(/\/v1$/, ""), coords).then((dir) => {
+    if (dir && deps.profile.id === INTERRAIL_PROFILE.id) applyEurope(dir);
+  });
+}
+
+/** Make Europe's stations searchable and let the trip searches read the engine's journeys. */
+function applyEurope(dir: EuropeDirectory): void {
+  setOperatorBooking(dir.booking);
+  deps.registry.addPlaces(
+    dir.places.map((p) => ({ id: p.id, label: p.name, city: p.town, lat: p.lat ?? NaN, lng: p.lon ?? NaN })),
+  );
+  setJourneySource(cachedJourneys);
+  formApi?.setStationLabels(deps.registry.list().map((s) => s.label));
+  // A link naming a station only Europe's network has can resolve now, and the form shows
+  // its name where it showed the bare id (a field the user has since edited stays as is).
+  if (query) {
+    const station = (id: string | undefined): string | undefined =>
+      id && !deps.registry.get(id) ? (deps.registry.resolve(id) ?? id) : id;
+    const before = { origin: query.origin, destination: query.destination };
+    query.origin = station(query.origin);
+    query.destination = station(query.destination);
+    if (refs) {
+      for (const [input, was, now] of [
+        [refs.origin, before.origin, query.origin],
+        [refs.destination, before.destination, query.destination],
+      ] as const) {
+        if (was && now && input.value === prettyLabel(was)) input.value = deps.registry.label(now);
+      }
+      deferFormCalRepaint();
+    }
+  }
+}
+
+/** The days a search shows: the date, or the ±flex window around it inside the bookable days. */
+function shownDates(q: SearchQuery): string[] {
+  const flex = q.flexDays ?? 0;
+  const last = addDays(today, BOOKING_WINDOW_DAYS - 1);
+  const out: string[] = [];
+  for (let i = -flex; i <= flex; i++) {
+    const d = addDays(q.date, i);
+    if (i === 0 || (d >= today && d <= last)) out.push(d);
+  }
+  return out.sort();
+}
+
+/** A first download of Europe's trains may take a while; past this, show SNCF's alone. */
+const EUROPE_WAIT_MS = 20000;
+
+/** Search what the first paint of `q` shows on Europe's network: its days' journeys, or its explore list. */
+async function europeWarm(q: SearchQuery): Promise<void> {
+  if (deps.profile.id !== INTERRAIL_PROFILE.id) return;
+  await Promise.race([startEurope(), new Promise((r) => setTimeout(r, EUROPE_WAIT_MS))]);
+  if (!europeOn()) return;
+  if (q.mode === "od" && q.origin && q.destination) {
+    const tasks = [searchJourneys(q.origin, q.destination, shownDates(q), q.maxConnections, true)];
+    // A round trip's return list: the same day, or the return day picked.
+    if (q.stay) tasks.push(searchJourneys(q.destination, q.origin, returnDates([q.date, q.returnDate ?? q.date], 0), q.maxConnections, true));
+    await Promise.all(tasks);
+  } else if (q.mode === "from" && q.origin && !q.stay) {
+    await searchReach(q.origin, shownDates(q), q.maxConnections);
+  }
+}
+
+/**
+ * After an exact trip paints, search the rest of the bookable days in the background (a
+ * few at a time, so a new search overtakes it), then repaint so its calendars fill in.
+ */
+async function europeFill(q: SearchQuery, token: number): Promise<void> {
+  if (!europeOn() || q.mode !== "od" || !q.origin || !q.destination) return;
+  const days = dateRange(today, BOOKING_WINDOW_DAYS);
+  const routes: [string, string, string[]][] = [[q.origin, q.destination, days]];
+  if (q.stay) routes.push([q.destination, q.origin, returnDates(days)]);
+  let found = false;
+  for (const [from, to, dates] of routes) {
+    for (let i = 0; i < dates.length; i += 3) {
+      if (token !== searchToken) return;
+      found = (await searchJourneys(from, to, dates.slice(i, i + 3), q.maxConnections, false)) || found;
+    }
+  }
+  if (!found || token !== searchToken || searchLoading) return;
+  refreshInPlace();
   deferFormCalRepaint();
 }
 
@@ -937,7 +1057,8 @@ function ctx(): RenderCtx {
     formatWeekday,
     // Deep-link to SNCF Connect with the trip pre-filled (clean station names, the
     // journey date, and the departure time). Connecting trips book per-leg instead.
-    bookUrl: (origin, destination, date, time) =>
+    bookUrl: (origin, destination, date, time, operator) =>
+      operatorById(operator)?.bookingUrl ??
       generateBookingUrl(deps.registry.label(origin), deps.registry.label(destination), date, time),
     cityInfoUrl,
     onOpenRoute: (origin, destination, open) => {
@@ -1880,9 +2001,12 @@ function runSearch(scrollTo?: number): void {
   // Otherwise pre-compute the heavy search primitives on the background worker so the
   // main thread stays responsive; the render then reads them straight from cache. If
   // the worker can't help, warmSearch resolves quickly and the render computes on-thread.
-  void warmSearch(deps.trains, query, today, deps.apiBase).then(() => {
+  // On Interrail, Europe's network answers the trip and explore searches alongside.
+  const searched = query;
+  void Promise.all([warmSearch(deps.trains, query, today, deps.apiBase), europeWarm(query)]).then(() => {
     if (token !== searchToken) return;
     paint();
+    void europeFill(searched, token);
   });
 }
 
@@ -2108,6 +2232,22 @@ function runBrowse(c: RenderCtx, dir: "from" | "to"): void {
   // the direct list (keeping the shortest journey per station) — otherwise widening
   // flexibility surfaces more direct places but never any extra connecting ones.
   const connecting = ((): ReachTrip[] => {
+    // Interrail across Europe: every town the engine reaches that the direct list hasn't.
+    const europe = dir === "from" && europeOn() ? windowDates.map((d) => cachedReach(anchor, d, query.maxConnections)) : [];
+    if (europe.length > 0 && europe.every((rows) => rows !== undefined)) {
+      const maxMin = query.maxDurationMin;
+      const byStation = new Map<string, ReachTrip>();
+      for (const rows of europe) {
+        for (const tr of rows ?? []) {
+          if (directStations.has(tr.station) || (maxMin && tr.journey.totalDurationMin > maxMin)) continue;
+          const cur = byStation.get(tr.station);
+          if (!cur || tr.journey.totalDurationMin < cur.journey.totalDurationMin) byStation.set(tr.station, tr);
+        }
+      }
+      return [...byStation.values()]
+        .sort((a, b) => a.journey.totalDurationMin - b.journey.totalDurationMin)
+        .slice(0, EUROPE_VIA_RESULTS);
+    }
     if (query.maxConnections <= 0) return [];
     const viaOpts = { ...filterOpts(), maxConnections: query.maxConnections };
     const byStation = new Map<string, ReachTrip>();

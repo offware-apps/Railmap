@@ -48,6 +48,8 @@ export interface MaxTrain {
   trainNo: string;
   available: boolean; // bookable with the pass: MAX = od_happy_card "OUI"; Interrail = the train runs
   axe?: string;
+  /** train-api's operator id for trains not run by SNCF ("renfe", "de"…); omitted = SNCF. */
+  operator?: string;
 }
 
 /** A station with coordinates for the map + autocomplete. */

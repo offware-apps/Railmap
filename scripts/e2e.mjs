@@ -35,8 +35,44 @@ const TYPES = {
   ".txt": "text/plain", ".xml": "application/xml", ".ico": "image/x-icon",
 };
 
+// A stand-in train-api for Interrail across Europe (trip bundles, v2): SNCF from Paris to
+// Barcelona, then Renfe on to Madrid, every day of the booking window. A page opened with
+// e2e=europe in its URL reads it; every other page runs on the bundled snapshot alone.
+const EUROPE_DATES = Array.from({ length: 33 }, (_, i) => new Date(Date.now() + (i - 1) * 86_400_000).toISOString().slice(0, 10));
+const EVERY_DAY = "f".repeat(Math.ceil(EUROPE_DATES.length / 4));
+const EUROPE_API = {
+  "/europe-api/v2/index.json": {
+    version: 2,
+    updatedAt: new Date().toISOString(),
+    operators: [
+      { id: "sncf", passes: [{ id: "interrail", bookingUrl: "https://www.sncf-connect.com/en-en/" }] },
+      { id: "renfe", passes: [{ id: "interrail", bookingUrl: "https://www.renfe.com/es/en" }] },
+    ],
+  },
+  "/europe-api/v2/sncf/interrail.json": {
+    v: 2, operator: "sncf", pass: "interrail", dates: EUROPE_DATES,
+    stations: [["PARIS (intramuros)", null, null], ["BARCELONA SANTS", null, null]],
+    families: ["SUD EST"],
+    trips: [["9713", 0, EVERY_DAY, [0, 1], [480, 480, 870, 870]]],
+  },
+  "/europe-api/v2/renfe/interrail.json": {
+    v: 2, operator: "renfe", pass: "interrail", dates: EUROPE_DATES,
+    stations: [["Barcelona-Sants", 41.3793, 2.1404], ["Zaragoza Delicias", 41.6588, -0.9116], ["Madrid-Puerta de Atocha", 40.4066, -3.6892]],
+    families: ["AVE"],
+    trips: [["03063", 0, EVERY_DAY, [0, 1, 2], [930, 930, 1010, 1012, 1095, 1095]]],
+  },
+};
+
 // Serve dist, mirroring the GitHub-Pages /Railmap/ base-path rewrite.
 const server = http.createServer((req, res) => {
+  const path = (req.url || "/").split("?")[0];
+  if (path.startsWith("/europe-api/")) {
+    const json = EUROPE_API[path];
+    if (!json) return res.writeHead(404).end("not found");
+    res.writeHead(200, { "Content-Type": "application/json" });
+    return res.end(JSON.stringify(json));
+  }
+  const europe = /[?&]e2e=europe\b/.test(req.url || "");
   let p = decodeURIComponent((req.url || "/").split("?")[0])
     .replace(/^\/Railmap\//, "/")
     .replace(/^\/+/, "");
@@ -47,7 +83,8 @@ const server = http.createServer((req, res) => {
   res.writeHead(200, { "Content-Type": TYPES[extname(file)] || "application/octet-stream" });
   // Runs on the bundled snapshot, never the live train-api (see trainApiBase in src/config.ts).
   const body = readFileSync(file);
-  res.end(file.endsWith(".html") ? body.toString("utf-8").replace(/<meta name="train-api"[^>]*>/, "") : body);
+  const meta = europe ? `<meta name="train-api" content="${ORIGIN}/europe-api/v1" />` : "";
+  res.end(file.endsWith(".html") ? body.toString("utf-8").replace(/<meta name="train-api"[^>]*>/, meta) : body);
 });
 await new Promise((r) => server.listen(0, "127.0.0.1", r));
 const PORT = server.address().port;
@@ -829,6 +866,25 @@ await scenario(
     await page.select(".header-quick select", "jeune");
     assert(await until(async () => (await $count(page, ".results .notice")) === 0 && (await $count(page, "article.journey")) > 0), "MAX results did not come back");
     assert(await page.evaluate(() => window.__samePage === true), "the page reloaded going back to MAX");
+  },
+);
+
+// Interrail across Europe: the trip search changes from SNCF to Renfe in Barcelona, books
+// the Renfe train on Renfe's site, and explore lists Madrid, which SNCF's trains never reach.
+await scenario(
+  "interrail europe: Paris to Madrid changes to Renfe, and explore reaches Madrid",
+  `${BASE}?mode=od&from=${enc(P)}&to=madrid-puerta-de-atocha&date=${DATE}&card=interrail&e2e=europe`,
+  async (page) => {
+    const shown = await until(async () => ((await $text(page, ".results")) || "").includes("03063") || null, 30_000);
+    assert(shown, `no Paris to Madrid journey with the Renfe train (results "${(await $text(page, ".results"))?.slice(0, 120)}")`);
+    assert((await $count(page, "article.journey")) > 0, "no journey card");
+    assert(((await $text(page, ".results")) || "").includes("9713"), "the SNCF train to Barcelona is missing");
+    // The calendar fills in behind the list: another day shows a train too.
+    const days = await until(async () => ((await $count(page, ".results .cal-cell.ok")) > 1) || null, 30_000);
+    assert(days, "the possible-days calendar did not fill in");
+    await page.goto(`${BASE}?mode=from&from=${enc(P)}&date=${DATE}&card=interrail&e2e=europe`, { waitUntil: "networkidle2" });
+    const madrid = await until(async () => ((await $text(page, ".results")) || "").includes("Madrid-Puerta de Atocha") || null, 30_000);
+    assert(madrid, `explore did not reach Madrid (results "${(await $text(page, ".results"))?.slice(0, 120)}")`);
   },
 );
 

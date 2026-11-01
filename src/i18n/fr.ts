@@ -137,6 +137,8 @@ export const fr = {
   lbl_dayoffset: "+{n} j",
 
   act_book: "Réserver sur SNCF Connect",
+
+  act_book_on: "Réserver sur {site}",
   act_next: "Étape suivante",
   act_results: "Résultats",
   act_book_leg: "Réserver le train {n}",
@@ -325,8 +327,8 @@ export const fr = {
   fee_chip: "Résa {fee}",
   fee_note: "Frais de réservation Interrail indicatifs, en 2de classe.",
   fee_link: "Tarifs Interrail",
-  tagline_ir: "Trains SNCF avec un pass Interrail.",
-  how_note_ir: "Cet outil affiche les trains qui circulent (open data SNCF) ; il ne sait pas s'il reste une place pass. Vérifiez sur SNCF Connect.",
+  tagline_ir: "Trains de toute l'Europe avec un pass Interrail.",
+  how_note_ir: "Cet outil affiche les trains qui circulent (open data des opérateurs) ; il ne sait pas s'il reste une place pass. Vérifiez en réservant.",
   multi_incomplete_ir: "Certains trajets n'ont aucun train — cet itinéraire est incomplet.",
   tour_none_ir: "Aucun itinéraire pour ces villes et dates.",
   res_none_ir: "Aucun train pour ces critères.",
