@@ -230,6 +230,27 @@ the destination is reachable, with its calendar open.
   back is instant. Switching between the two MAX passes re-runs straight away. Booking still opens SNCF Connect,
   where pass-holder reservations are sold; "How does it work?" links Interrail's page on
   French reservations. A `card=interrail` link loads the Interrail snapshot at boot.
+  **Interrail across Europe**: on Interrail, a background worker (`src/europe/`) downloads
+  train-api's `/v2/` index and every operator's station list (small) once per visit, and
+  matches the operators' stations into one directory. A search then downloads only the
+  trip bundles of the operators on the way between its two towns (operators that meet in a
+  town, on a shortest chain or one operator longer; explore: the origin's operators and
+  their neighbours), so Paris to Madrid loads SNCF and Renfe, never Finland, and the page
+  stays light as countries are added. It searches them with train-api's journey engine
+  (`src/europe/engine.ts`, a copy of train-api's `src/search.ts`). Settings has an opt-in
+  "Europe's timetables offline": it keeps every operator's files in Cache Storage
+  (`railmap-europe`, which `public/sw.js` leaves alone), refreshes them on a visit once
+  train-api has published newer ones, and the worker reads them whenever train-api can't
+  be reached; turning it off deletes them. Every station in the directory joins the
+  station fields and the map: a place SNCF also serves keeps SNCF's id, any other takes the engine's
+  (`amsterdam-centraal`). The exact trip (one way, round trip, flexible days) reads its
+  journeys from that network: the days shown first, then the rest of the bookable days in
+  the background, after which the calendars fill in. A search from or to a station covers
+  every station of its town. Explore from a station lists, after SNCF's direct
+  destinations, the 80 fastest of the 150 busiest towns reachable that day. A train of
+  another operator books on that operator's site ("Book on Renfe"), and carries no
+  reservation fee. When the bundles can't load, Interrail searches SNCF's trains alone, as
+  before. Ideas, arrive-at, multi-city and the planner still search SNCF's trains.
   "How does it work?" lists who can use each pass and its rules (MAX JEUNE 16 to 27,
   MAX SENIOR from 60, booking window and daily limits; Interrail for residents of the 33
   countries, Eurail for everyone else) and the special case for people living in France (a

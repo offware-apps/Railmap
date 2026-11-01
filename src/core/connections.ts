@@ -43,6 +43,43 @@ export interface ConnectionOptions {
 export const MAX_RESULTS = 200;
 const MAX_DFS_EXPANSIONS = 400_000;
 
+/**
+ * Journeys another search already found for a route and day, or undefined when it has
+ * none: Interrail across Europe, where the trip-bundle engine answers instead of this
+ * file's search over SNCF's trains (see src/europe/client.ts). `maxConnections` is the
+ * query's.
+ */
+export type JourneySource = (origin: string, destination: string, date: string, maxConnections: number) => Journey[] | undefined;
+
+let journeySource: JourneySource | null = null;
+
+/** Let {@link findJourneys} answer from `source` first; null goes back to the trains alone. */
+export function setJourneySource(source: JourneySource | null): void {
+  journeySource = source;
+}
+
+/** A found journey list narrowed to the options the source didn't search with. */
+function narrowFound(list: Journey[], opts: ConnectionOptions): Journey[] {
+  const after = opts.departAfter ? parseTimeToMinutes(opts.departAfter) : undefined;
+  const before = opts.departBefore ? parseTimeToMinutes(opts.departBefore) : undefined;
+  const arriveBy = opts.arriveBefore ? parseTimeToMinutes(opts.arriveBefore) : undefined;
+  return list
+    .filter((j) => {
+      const last = j.legs[j.legs.length - 1];
+      if (!last) return false;
+      if (after !== undefined && j.departMin < after) return false;
+      if (before !== undefined && j.departMin > before) return false;
+      if (arriveBy !== undefined && journeyArriveAbs(j) > arriveBy) return false;
+      if (opts.maxDurationMin != null && j.totalDurationMin > opts.maxDurationMin) return false;
+      if (opts.minDurationMin != null && j.totalDurationMin < opts.minDurationMin) return false;
+      if (opts.trainType && j.legs.some((l) => (l.axe ?? "") !== opts.trainType)) return false;
+      if (opts.excludeNight && j.legs.some(isNightTrain)) return false;
+      if (opts.onlyNight && !isNightTrain(last)) return false;
+      return true;
+    })
+    .sort((a, b) => a.departMin - b.departMin || a.totalDurationMin - b.totalDurationMin || a.legs.length - b.legs.length);
+}
+
 // Cache of available trains grouped by date, keyed by the (stable, loaded-once)
 // trains array. Avoids re-scanning the whole dataset on every journey lookup —
 // matters when callers run findJourneys many times (30-day calendar, best mode).
@@ -170,6 +207,8 @@ export function findJourneys(
   opts: ConnectionOptions = {},
 ): Journey[] {
   const maxConn = opts.maxConnections ?? 1;
+  const found = journeySource?.(origin, destination, date, maxConn);
+  if (found) return narrowFound(found, opts);
   const hubSet = new Set(opts.hubs ?? HUB_STATIONS);
   const minC = opts.minConnectionMin ?? MIN_CONNECTION_MIN;
   // Pool `span` calendar days (≥2). A multi-day span also raises the layover

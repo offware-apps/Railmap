@@ -42,6 +42,8 @@ export interface Settings {
   map: boolean;
   /** Show Interrail pass-holder reservation fees on each train (off by default). */
   fees: boolean;
+  /** Keep Europe's Interrail timetables on the device, so searches work offline (off by default). */
+  offlineEurope: boolean;
 }
 
 export type Density = "comfortable" | "compact";
@@ -90,6 +92,7 @@ export function loadSettings(): Settings {
     reduceMotion: s.reduceMotion === true,
     map: s.map !== false, // default on
     fees: s.fees === true,
+    offlineEurope: s.offlineEurope === true,
   };
 }
 

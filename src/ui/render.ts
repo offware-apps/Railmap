@@ -11,16 +11,24 @@ import { isAirportStation } from "../data/stations";
 import { formatDuration, dayIndex, addDays } from "../util/time";
 import { t, getLang } from "../i18n";
 import { formatFee, type Fee } from "../data/fees";
+import { operatorById } from "../data/operators";
 
 // Monotonic id source for wiring aria-labelledby (a calendar's <h3> to its grid).
 let uidSeq = 0;
+
+/** "Book on SNCF Connect", or on the site of the operator that runs the train. */
+function bookOn(train: MaxTrain | undefined): string {
+  const op = operatorById(train?.operator);
+  return op ? t("act_book_on", { site: op.name }) : t("act_book");
+}
 
 export interface RenderCtx {
   label: (id: string) => string;
   formatDate: (iso: string) => string;
   /** Narrow localized weekday name (e.g. "Sat"). */
   formatWeekday: (iso: string) => string;
-  bookUrl: (origin: string, destination: string, date: string, time?: string) => string;
+  /** Where to book a train: SNCF Connect, or another operator's site (`operator`, see operators.ts). */
+  bookUrl: (origin: string, destination: string, date: string, time?: string, operator?: string) => string;
   /** External travel-guide (Wikivoyage) URL for a station's city. */
   cityInfoUrl: (id: string) => string;
   /** Open the exact O→D trip. A getaway idea passes `open.date` — its advertised start day —
@@ -303,7 +311,7 @@ export function journeyEl(
   const connecting = j.legs.length > 1;
   const book = (): void => {
     if (connecting) ctx.onBookSteps(j);
-    else window.open(ctx.bookUrl(j.origin, j.destination, j.date, j.legs[0]?.depart), "_blank", "noopener,noreferrer");
+    else window.open(ctx.bookUrl(j.origin, j.destination, j.date, j.legs[0]?.depart, j.legs[0]?.operator), "_blank", "noopener,noreferrer");
   };
 
   // A through-ticket can't be pinned to the exact free trains in a single SNCF
@@ -334,7 +342,7 @@ export function journeyEl(
         )
       : el("a", {
           class: "btn btn-primary book-leg",
-          href: ctx.bookUrl(j.origin, j.destination, j.date, j.legs[0]?.depart),
+          href: ctx.bookUrl(j.origin, j.destination, j.date, j.legs[0]?.depart, j.legs[0]?.operator),
           attrs: { target: "_blank", rel: "noopener noreferrer" },
           text: opts.bookLabel,
         })
@@ -353,12 +361,12 @@ export function journeyEl(
         "a",
         {
           class: "book-arrow",
-          href: ctx.bookUrl(j.origin, j.destination, j.date, j.legs[0]?.depart),
+          href: ctx.bookUrl(j.origin, j.destination, j.date, j.legs[0]?.depart, j.legs[0]?.operator),
           attrs: {
             target: "_blank",
             rel: "noopener noreferrer",
-            "aria-label": t("act_book"),
-            title: t("act_book"),
+            "aria-label": bookOn(j.legs[0]),
+            title: bookOn(j.legs[0]),
           },
         },
         [icon(I.arrow), el("span", { class: "sr-only", text: t("link_newtab") })],

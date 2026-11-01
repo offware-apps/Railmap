@@ -72,11 +72,15 @@ export function interrailFee(axe: string | undefined, origin: string, destinatio
   return axe ? BY_AXE[axe] : undefined;
 }
 
-/** The fees of every train in a journey added up, or undefined when one train has none. */
+/**
+ * The fees of every train in a journey added up, or undefined when one train has none.
+ * The table covers SNCF's trains only, so another operator's train leaves the journey without one.
+ */
 export function journeyFee(j: Journey): Fee | undefined {
   let min = 0;
   let max = 0;
   for (const leg of j.legs) {
+    if (leg.operator) return undefined;
     const fee = interrailFee(leg.axe, leg.origin, leg.destination);
     if (!fee) return undefined;
     min += fee.min;

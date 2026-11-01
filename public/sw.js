@@ -7,7 +7,9 @@
  *  - Navigation requests  → network-first, fallback to cached shell
  *  - /data/*.json         → network-first, fallback to cache
  *  - Same-origin GET      → cache-first (hashed JS/CSS assets)
- *  - train-api *.json     → network-first, fallback to cache (offline timetable)
+ *  - train-api *.json     → network-first, fallback to cache (offline timetable), except
+ *                           the v2 trip files: Interrail across Europe keeps those itself,
+ *                           only when the user turns offline mode on (src/europe/)
  *  - Other cross-origin / POST → passthrough, never cached
  */
 
@@ -15,7 +17,11 @@
 // re-install and re-activate: the activate handler then deletes the previous cache
 // and navigates any client stranded on a stale shell (the white-page failure mode)
 // onto the freshly deployed one.
-const CACHE_NAME = "maxjeune-v38";
+const CACHE_NAME = "maxjeune-v39";
+
+// Europe's timetables, kept by the page's Europe worker when the user turns offline mode
+// on (OFFLINE_CACHE in src/europe/cache.ts). Not this worker's to delete.
+const EUROPE_CACHE = "railmap-europe";
 
 // Minimal app shell — paths relative to the SW's scope (/Railmap/)
 // Vite injects a hashed index.html in the build output at the base path.
@@ -47,8 +53,9 @@ self.addEventListener("activate", (event) => {
       const keys = await caches.keys();
       // If an older cache exists, this is an UPGRADE: a client may be stranded on
       // a stale shell pointing at a deleted bundle (the blank-page failure mode).
-      const wasUpgrade = keys.some((k) => k !== CACHE_NAME);
-      await Promise.all(keys.filter((k) => k !== CACHE_NAME).map((k) => caches.delete(k)));
+      const old = keys.filter((k) => k !== CACHE_NAME && k !== EUROPE_CACHE);
+      const wasUpgrade = old.length > 0;
+      await Promise.all(old.map((k) => caches.delete(k)));
       await self.clients.claim();
       if (wasUpgrade) {
         // Force any open window onto the fresh shell. The page's own JS can't
@@ -82,7 +89,12 @@ self.addEventListener("fetch", (event) => {
 
   // The train-api timetable replaces /data/*.json for most visitors, so keep the last
   // copy for offline use the same way (see trainApiBase in src/config.ts).
-  if (url.origin === TRAIN_API_ORIGIN && url.pathname.startsWith("/train-api/") && url.pathname.endsWith(".json")) {
+  if (
+    url.origin === TRAIN_API_ORIGIN &&
+    url.pathname.startsWith("/train-api/") &&
+    !url.pathname.startsWith("/train-api/v2/") &&
+    url.pathname.endsWith(".json")
+  ) {
     event.respondWith(networkFirstWithCacheFallback(request));
     return;
   }

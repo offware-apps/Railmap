@@ -35,8 +35,64 @@ const TYPES = {
   ".txt": "text/plain", ".xml": "application/xml", ".ico": "image/x-icon",
 };
 
+// A stand-in train-api for Interrail across Europe (v2): SNCF from Paris to Barcelona, Renfe
+// on to Madrid, and Finland's VR, which no Paris search should download, every day of the
+// booking window. A page opened with e2e=europe in its URL reads it; every other page runs
+// on the bundled snapshot alone. EUROPE_HITS records the files asked for; europeDown makes
+// the stand-in fail like an unreachable network.
+const EUROPE_DATES = Array.from({ length: 33 }, (_, i) => new Date(Date.now() + (i - 1) * 86_400_000).toISOString().slice(0, 10));
+const EVERY_DAY = "f".repeat(Math.ceil(EUROPE_DATES.length / 4));
+const EUROPE_OPERATORS = {
+  sncf: {
+    booking: "https://www.sncf-connect.com/en-en/",
+    stations: [["PARIS (intramuros)", null, null], ["BARCELONA SANTS", null, null]],
+    families: ["SUD EST"],
+    trips: [["9713", 0, EVERY_DAY, [0, 1], [480, 480, 870, 870]]],
+  },
+  renfe: {
+    booking: "https://www.renfe.com/es/en",
+    stations: [["Barcelona-Sants", 41.3793, 2.1404], ["Zaragoza Delicias", 41.6588, -0.9116], ["Madrid-Puerta de Atocha", 40.4066, -3.6892]],
+    families: ["AVE"],
+    trips: [["03063", 0, EVERY_DAY, [0, 1, 2], [930, 930, 1010, 1012, 1095, 1095]]],
+  },
+  fi: {
+    booking: "https://www.vr.fi/en",
+    stations: [["Helsinki", 60.1719, 24.9414], ["Tampere", 61.4981, 23.7731]],
+    families: ["IC"],
+    trips: [["IC1", 0, EVERY_DAY, [0, 1], [420, 420, 520, 520]]],
+  },
+};
+const EUROPE_API = {
+  "/europe-api/v2/index.json": {
+    version: 2,
+    updatedAt: new Date().toISOString(),
+    operators: Object.entries(EUROPE_OPERATORS).map(([id, o]) => ({
+      id,
+      passes: [{ id: "interrail", bookingUrl: o.booking, bytes: JSON.stringify(o.trips).length }],
+    })),
+  },
+};
+for (const [id, o] of Object.entries(EUROPE_OPERATORS)) {
+  EUROPE_API[`/europe-api/v2/${id}/stations.json`] = o.stations;
+  EUROPE_API[`/europe-api/v2/${id}/interrail.json`] = {
+    v: 2, operator: id, pass: "interrail", dates: EUROPE_DATES, stations: o.stations, families: o.families, trips: o.trips,
+  };
+}
+const EUROPE_HITS = new Set();
+let europeDown = false;
+
 // Serve dist, mirroring the GitHub-Pages /Railmap/ base-path rewrite.
 const server = http.createServer((req, res) => {
+  const path = (req.url || "/").split("?")[0];
+  if (path.startsWith("/europe-api/")) {
+    EUROPE_HITS.add(path);
+    if (europeDown) return res.writeHead(503).end("down");
+    const json = EUROPE_API[path];
+    if (!json) return res.writeHead(404).end("not found");
+    res.writeHead(200, { "Content-Type": "application/json" });
+    return res.end(JSON.stringify(json));
+  }
+  const europe = /[?&]e2e=europe\b/.test(req.url || "");
   let p = decodeURIComponent((req.url || "/").split("?")[0])
     .replace(/^\/Railmap\//, "/")
     .replace(/^\/+/, "");
@@ -47,7 +103,8 @@ const server = http.createServer((req, res) => {
   res.writeHead(200, { "Content-Type": TYPES[extname(file)] || "application/octet-stream" });
   // Runs on the bundled snapshot, never the live train-api (see trainApiBase in src/config.ts).
   const body = readFileSync(file);
-  res.end(file.endsWith(".html") ? body.toString("utf-8").replace(/<meta name="train-api"[^>]*>/, "") : body);
+  const meta = europe ? `<meta name="train-api" content="${ORIGIN}/europe-api/v1" />` : "";
+  res.end(file.endsWith(".html") ? body.toString("utf-8").replace(/<meta name="train-api"[^>]*>/, meta) : body);
 });
 await new Promise((r) => server.listen(0, "127.0.0.1", r));
 const PORT = server.address().port;
@@ -829,6 +886,68 @@ await scenario(
     await page.select(".header-quick select", "jeune");
     assert(await until(async () => (await $count(page, ".results .notice")) === 0 && (await $count(page, "article.journey")) > 0), "MAX results did not come back");
     assert(await page.evaluate(() => window.__samePage === true), "the page reloaded going back to MAX");
+  },
+);
+
+// Interrail across Europe: the trip search changes from SNCF to Renfe in Barcelona, books
+// the Renfe train on Renfe's site, and explore lists Madrid, which SNCF's trains never reach.
+EUROPE_HITS.clear();
+await scenario(
+  "interrail europe: Paris to Madrid changes to Renfe, and explore reaches Madrid",
+  `${BASE}?mode=od&from=${enc(P)}&to=madrid-puerta-de-atocha&date=${DATE}&card=interrail&e2e=europe`,
+  async (page) => {
+    const shown = await until(async () => ((await $text(page, ".results")) || "").includes("03063") || null, 30_000);
+    assert(shown, `no Paris to Madrid journey with the Renfe train (results "${(await $text(page, ".results"))?.slice(0, 120)}")`);
+    assert((await $count(page, "article.journey")) > 0, "no journey card");
+    assert(((await $text(page, ".results")) || "").includes("9713"), "the SNCF train to Barcelona is missing");
+    // The calendar fills in behind the list: another day shows a train too.
+    const days = await until(async () => ((await $count(page, ".results .cal-cell.ok")) > 1) || null, 30_000);
+    assert(days, "the possible-days calendar did not fill in");
+    // It scales by downloading only the operators on the way, and every station list.
+    assert(EUROPE_HITS.has("/europe-api/v2/fi/stations.json"), "Finland's stations were not listed");
+    assert(!EUROPE_HITS.has("/europe-api/v2/fi/interrail.json"), "Paris to Madrid downloaded Finland's timetable");
+    await page.goto(`${BASE}?mode=from&from=${enc(P)}&date=${DATE}&card=interrail&e2e=europe`, { waitUntil: "networkidle2" });
+    const madrid = await until(async () => ((await $text(page, ".results")) || "").includes("Madrid-Puerta de Atocha") || null, 30_000);
+    assert(madrid, `explore did not reach Madrid (results "${(await $text(page, ".results"))?.slice(0, 120)}")`);
+  },
+);
+
+// Offline mode (Settings, opt-in): every country's timetable is kept on the device, and
+// a search still finds Paris to Madrid when train-api can't be reached.
+await scenario(
+  "interrail europe: offline mode keeps every country and searches without train-api",
+  `${BASE}?mode=od&from=${enc(P)}&to=madrid-puerta-de-atocha&date=${DATE}&card=interrail&e2e=europe`,
+  async (page) => {
+    europeDown = false;
+    assert(await until(async () => ((await $text(page, ".results")) || "").includes("03063") || null, 30_000), "precondition: no Paris to Madrid journey");
+    await page.click("button.settings-btn");
+    assert(await until(async () => (await $count(page, ".settings-modal")) > 0 || null, 5_000), "the settings dialog did not open");
+    const turnedOn = await page.evaluate(() => {
+      const row = [...document.querySelectorAll(".settings-modal .set-row")].find((r) =>
+        /offline/i.test(r.querySelector(".set-row-label")?.textContent || ""),
+      );
+      const sw = row?.querySelector("button[role=switch]");
+      sw?.click();
+      return !!sw;
+    });
+    assert(turnedOn, "no offline switch in the settings");
+    const kept = await until(
+      () =>
+        page.evaluate(async () => {
+          const c = await caches.open("railmap-europe");
+          return (await c.keys()).filter((r) => r.url.includes("/interrail.json")).length === 3 || null;
+        }),
+      30_000,
+    );
+    assert(kept, "offline mode did not keep every country's timetable");
+    europeDown = true;
+    try {
+      await page.goto(`${BASE}?mode=od&from=${enc(P)}&to=madrid-puerta-de-atocha&date=${DATE2}&card=interrail&e2e=europe`, { waitUntil: "networkidle2" });
+      const offline = await until(async () => ((await $text(page, ".results")) || "").includes("03063") || null, 30_000);
+      assert(offline, `no journey with train-api unreachable (results "${(await $text(page, ".results"))?.slice(0, 120)}")`);
+    } finally {
+      europeDown = false;
+    }
   },
 );
 
