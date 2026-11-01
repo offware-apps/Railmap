@@ -7,7 +7,8 @@
 import type { Journey, MaxTrain } from "../types";
 import { toJourney } from "../core/connections";
 import { addDays, dayIndex, minutesToHHMM } from "../util/time";
-import type { EuropeDirectory, EuropeReply, EuropeRequest } from "./europe.worker";
+import type { EuropeDirectory, EuropeReply, EuropeRequest, OfflineState } from "./europe.worker";
+import { OFFLINE_CACHE } from "./cache";
 import type { EuropeJourney, ReachRow } from "./network";
 
 /** A day's journeys between two stations are searched with up to this many trains. */
@@ -119,14 +120,32 @@ function ask(body: RequestBody, urgent: boolean): Promise<EuropeReply | null> {
 let directory: Promise<EuropeDirectory | null> | null = null;
 let loaded: EuropeDirectory | null = null;
 
-/** Download the network once (a few MB, compressed to about one); null when it can't load. */
-export function loadEurope(base: string, sncfCoords: Record<string, [number, number]>): Promise<EuropeDirectory | null> {
+/**
+ * Download the station directory once (every operator's stations; each search then loads
+ * only the timetables it needs). `offline` reads and keeps them on the device too. Null
+ * when it can't load.
+ */
+export function loadEurope(base: string, sncfCoords: Record<string, [number, number]>, offline: boolean): Promise<EuropeDirectory | null> {
   if (!base) return Promise.resolve(null);
-  directory ??= ask({ type: "init", base, sncfCoords }, true).then((r) => {
+  directory ??= ask({ type: "init", base, sncfCoords, offline }, true).then((r) => {
     loaded = r?.type === "init" ? r.directory : null;
     return loaded;
   });
   return directory;
+}
+
+/**
+ * Keep every operator's timetables on the device (download what's missing or outdated), or
+ * drop them. Resolves with what is kept; null without the network loaded.
+ */
+export async function setEuropeOffline(on: boolean): Promise<OfflineState | null> {
+  if (!loaded) {
+    // Never loaded this visit: dropping the kept copy needs no worker.
+    if (!on && typeof caches !== "undefined") await caches.delete(OFFLINE_CACHE).catch(() => false);
+    return null;
+  }
+  const r = await ask({ type: "offline", on }, false);
+  return r?.type === "offline" ? r.state : null;
 }
 
 /** The loaded network's places, or null before (or without) it. */

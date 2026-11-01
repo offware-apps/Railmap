@@ -83,8 +83,18 @@ const SNCF_COORDS: Record<string, [number, number]> = {
   "BARCELONA SANTS": [41.3792, 2.1405],
 };
 
+// Finland's VR: no town in common with SNCF or Renfe.
+const vr = bundle("fi", [["IC1", [["Helsinki", "07:00"], ["Tampere", "08:40"]], "IC"]], { Helsinki: [60.1719, 24.9414], Tampere: [61.4981, 23.7731] });
+
+/** The directory from the operators' station lists, with their trips loaded. */
+function europeOf(bundles: SearchBundle[]): Europe {
+  const e = new Europe(bundles.map((b) => ({ operator: b.operator, stations: b.stations })), SNCF_COORDS);
+  for (const b of bundles) e.addBundle(b);
+  return e;
+}
+
 describe("Europe's network", () => {
-  const europe = new Europe([sncf, renfe], SNCF_COORDS);
+  const europe = europeOf([sncf, renfe, vr]);
 
   it("keeps SNCF's ids where SNCF stops, and the engine's elsewhere", () => {
     const dir = europe.directory();
@@ -95,7 +105,6 @@ describe("Europe's network", () => {
     expect(ids).not.toContain("barcelona-sants");
     const atocha = dir.find((p) => p.name === "Madrid-Puerta de Atocha");
     expect(atocha).toMatchObject({ id: "madrid-puerta-de-atocha", town: "Madrid", lat: 40.4066 });
-    expect(atocha?.calls).toBeGreaterThan(0);
   });
 
   it("finds Paris to Madrid, changing from SNCF to Renfe in Barcelona", () => {
@@ -123,6 +132,24 @@ describe("Europe's network", () => {
     // Atocha and Chamartín are one town: Madrid appears once.
     expect(stations.filter((s) => s.startsWith("madrid"))).toHaveLength(1);
     expect(stations).not.toContain("PARIS (intramuros)");
+  });
+
+  it("needs only the operators on the way", () => {
+    expect(europe.operatorsFor("PARIS (intramuros)", "madrid-puerta-de-atocha")).toEqual(["renfe", "sncf"]);
+    expect(europe.operatorsFor("PARIS (intramuros)", "LYON (intramuros)")).toEqual(["sncf"]);
+    expect(europe.operatorsFor("PARIS (intramuros)")).toEqual(["renfe", "sncf"]);
+    expect(europe.operatorsFor("helsinki")).toEqual(["fi"]);
+  });
+
+  it("lists every station before any timetable loads, and searches once the operators on the way are in", () => {
+    const e = new Europe([sncf, renfe, vr].map((b) => ({ operator: b.operator, stations: b.stations })), SNCF_COORDS);
+    expect(e.directory().map((p) => p.id)).toContain("helsinki");
+    expect(e.missing(e.operatorsFor("PARIS (intramuros)", "madrid-puerta-de-atocha"))).toEqual(["renfe", "sncf"]);
+    expect(e.journeys("PARIS (intramuros)", "madrid-puerta-de-atocha", DAY, 4)).toEqual([]);
+    e.addBundle(sncf);
+    e.addBundle(renfe);
+    expect(e.missing(["renfe", "sncf", "fi"])).toEqual(["fi"]);
+    expect(e.journeys("PARIS (intramuros)", "madrid-puerta-de-atocha", DAY, 4)[0]?.legs.map((l) => l.trainNo)).toEqual(["9713", "03063"]);
   });
 
   it("answers nothing for a station it doesn't know", () => {

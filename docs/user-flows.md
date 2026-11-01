@@ -230,12 +230,19 @@ the destination is reachable, with its calendar open.
   back is instant. Switching between the two MAX passes re-runs straight away. Booking still opens SNCF Connect,
   where pass-holder reservations are sold; "How does it work?" links Interrail's page on
   French reservations. A `card=interrail` link loads the Interrail snapshot at boot.
-  **Interrail across Europe**: on Interrail, the page also downloads every operator's
-  Interrail trip bundle from train-api (`/v2/`, about 1 MB compressed, once per visit) into
-  a background worker (`src/europe/`), which matches the operators' stations into one
-  network and searches it with train-api's journey engine (`src/europe/engine.ts`, a copy
-  of train-api's `src/search.ts`). Every station it serves joins the station fields and the
-  map: a place SNCF also serves keeps SNCF's id, any other takes the engine's
+  **Interrail across Europe**: on Interrail, a background worker (`src/europe/`) downloads
+  train-api's `/v2/` index and every operator's station list (small) once per visit, and
+  matches the operators' stations into one directory. A search then downloads only the
+  trip bundles of the operators on the way between its two towns (operators that meet in a
+  town, on a shortest chain or one operator longer; explore: the origin's operators and
+  their neighbours), so Paris to Madrid loads SNCF and Renfe, never Finland, and the page
+  stays light as countries are added. It searches them with train-api's journey engine
+  (`src/europe/engine.ts`, a copy of train-api's `src/search.ts`). Settings has an opt-in
+  "Europe's timetables offline": it keeps every operator's files in Cache Storage
+  (`railmap-europe`, which `public/sw.js` leaves alone), refreshes them on a visit once
+  train-api has published newer ones, and the worker reads them whenever train-api can't
+  be reached; turning it off deletes them. Every station in the directory joins the
+  station fields and the map: a place SNCF also serves keeps SNCF's id, any other takes the engine's
   (`amsterdam-centraal`). The exact trip (one way, round trip, flexible days) reads its
   journeys from that network: the days shown first, then the rest of the bookable days in
   the background, after which the calendars fill in. A search from or to a station covers

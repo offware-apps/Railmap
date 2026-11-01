@@ -140,6 +140,10 @@ export function showSettingsModal(opts: {
   onMap: (v: boolean) => void;
   onCompact: (v: boolean) => void;
   onFees: (v: boolean) => void;
+  /** Keep Europe's Interrail timetables on the device (off by default), and its status line. */
+  offlineEurope: boolean;
+  offlineNote: string;
+  onOfflineEurope: (v: boolean) => void;
   /** Master "Low-end mode": ON = all three savers on, OFF = all three off. */
   onLowEnd: (v: boolean) => void;
 }): void {
@@ -183,6 +187,15 @@ export function showSettingsModal(opts: {
           opts.onFees(v);
           rebuild({ fees: v });
         }),
+        settingSwitch(
+          t("set_offline"),
+          opts.offlineNote ? `${t("set_offline_hint")} ${opts.offlineNote}` : t("set_offline_hint"),
+          opts.offlineEurope,
+          (v) => {
+            opts.onOfflineEurope(v);
+            rebuild({ offlineEurope: v, offlineNote: v ? t("set_offline_loading") : "" });
+          },
+        ),
       ]),
       el("p", {
         class: "muted small set-version",

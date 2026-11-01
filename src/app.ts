@@ -73,8 +73,9 @@ import {
   cachedReach,
   searchReach,
   returnDates,
+  setEuropeOffline,
 } from "./europe/client";
-import type { EuropeDirectory } from "./europe/europe.worker";
+import type { EuropeDirectory, OfflineState } from "./europe/europe.worker";
 import { notify } from "./pwa/register";
 
 interface Deps {
@@ -804,6 +805,13 @@ function europeOn(): boolean {
  */
 function startEurope(): Promise<void> {
   if (deps.profile.id !== INTERRAIL_PROFILE.id) return Promise.resolve();
+  return loadDirectory().then((dir) => {
+    if (dir && deps.profile.id === INTERRAIL_PROFILE.id) applyEurope(dir);
+  });
+}
+
+/** Europe's station directory, loaded once (each search then loads only the timetables it needs). */
+function loadDirectory(): Promise<EuropeDirectory | null> {
   // SNCF's open data has no positions: the app's own place its stations among the others.
   const coords: Record<string, [number, number]> = {};
   for (const s of deps.registry.all()) {
@@ -811,9 +819,37 @@ function startEurope(): Promise<void> {
     if (at) coords[s.id] = at;
   }
   // The page's train-api base names its v1 files; the trip bundles sit beside them, under /v2/.
-  return loadEurope(trainApiBase().replace(/\/v1$/, ""), coords).then((dir) => {
-    if (dir && deps.profile.id === INTERRAIL_PROFILE.id) applyEurope(dir);
+  const loading = loadEurope(trainApiBase().replace(/\/v1$/, ""), coords, settings.offlineEurope);
+  // Offline mode refreshes its copy on each visit, once train-api has published a newer one.
+  if (settings.offlineEurope && !offlineSynced) {
+    offlineSynced = true;
+    void loading.then((dir) => dir && syncOffline());
+  }
+  return loading;
+}
+
+// What offline mode keeps on the device, as last reported; the download under way.
+let offlineState: OfflineState | null = null;
+let offlineBusy = false;
+let offlineSynced = false;
+
+/** Bring the device's copy of Europe's timetables in line with the setting. */
+function syncOffline(): void {
+  offlineBusy = settings.offlineEurope;
+  void setEuropeOffline(settings.offlineEurope).then((state) => {
+    offlineState = state;
+    offlineBusy = false;
   });
+}
+
+/** The offline switch's status line: how big, downloading, or how fresh the kept copy is. */
+function offlineNote(): string {
+  if (offlineBusy) return t("set_offline_loading");
+  if (settings.offlineEurope && offlineState?.updatedAt) {
+    return t("set_offline_kept", { date: formatDate(offlineState.updatedAt.slice(0, 10)) });
+  }
+  const bytes = europeDirectory()?.bytes ?? 0;
+  return bytes > 0 ? t("set_offline_size", { mb: Math.max(1, Math.round(bytes / 1e6)) }) : "";
 }
 
 /** Make Europe's stations searchable and let the trip searches read the engine's journeys. */
@@ -3722,6 +3758,17 @@ function openSettings(): void {
       settings = { ...settings, fees: v };
       store.saveSettings(settings);
       refreshInPlace();
+    },
+    offlineEurope: settings.offlineEurope,
+    offlineNote: offlineNote(),
+    onOfflineEurope: (v) => {
+      settings = { ...settings, offlineEurope: v };
+      store.saveSettings(settings);
+      offlineBusy = v;
+      offlineSynced = true;
+      // On a MAX pass the directory isn't loaded yet: load it to download the timetables.
+      if (v) void loadDirectory().then((dir) => (dir ? syncOffline() : void (offlineBusy = false)));
+      else syncOffline();
     },
     // Master "Low-end mode": flip all three savers together. ON = the light experience
     // (no motion, no map, compact); OFF = the full experience (motion, map, comfortable).
