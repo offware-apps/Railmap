@@ -337,6 +337,35 @@ export class Network {
       }
       rawPlace[i] = p;
     });
+    // A name its place's other stations share beats a busier one they don't: Munich's
+    // place is "München Hbf", not the tram stop "Hauptbahnhof (U, Tram)" that merged into it.
+    const byPlace: number[][] = this.places.map(() => []);
+    raw.forEach((_, i) => byPlace[rawPlace[i] as number]?.push(i));
+    const words = raw.map((s) => new Set(s.norm.split(" ").filter((w) => w.length >= 3)));
+    byPlace.forEach((list, p) => {
+      if (list.length < 3) return;
+      const shared = (i: number): number =>
+        list.filter((j) => j !== i && raw[j]?.name !== raw[i]?.name && [...(words[i] as Set<string>)].some((w) => words[j]?.has(w))).length;
+      const located = (i: number): boolean => raw[i]?.lat !== null && raw[i]?.lon !== null;
+      const cur = namedBy[p] as number;
+      let best = cur;
+      let bestShared = shared(cur);
+      for (const i of list) {
+        if (located(i) !== located(cur)) continue;
+        const n = shared(i);
+        if (n > bestShared || (n === bestShared && (calls[i] as number) > (calls[best] as number))) {
+          best = i;
+          bestShared = n;
+        }
+      }
+      if (best === cur) return;
+      const s = raw[best] as RawStation;
+      const place = this.places[p] as Place;
+      namedBy[p] = best;
+      place.name = s.name;
+      place.lat = s.lat;
+      place.lon = s.lon;
+    });
     this.placeOf = stationRaw.map((ids) => Int32Array.from(ids, (i) => rawPlace[i] as number));
     const n = this.places.length;
     const change = opts.change ?? 10;
