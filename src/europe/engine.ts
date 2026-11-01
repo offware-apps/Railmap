@@ -337,25 +337,37 @@ export class Network {
       }
       rawPlace[i] = p;
     });
-    // A name its place's other stations share beats a busier one they don't: Munich's
-    // place is "München Hbf", not the tram stop "Hauptbahnhof (U, Tram)" that merged into it.
+    // A name the place's other stations agree on beats a busier one: first the name most
+    // of them normalize to ("Zürich HB" over the quay's "Zürich, Bahnhofquai"), then one
+    // sharing a word with most (Munich is "München Hbf", not the tram stop "Hauptbahnhof
+    // (U, Tram)" that merged into it), then the busiest.
     const byPlace: number[][] = this.places.map(() => []);
     raw.forEach((_, i) => byPlace[rawPlace[i] as number]?.push(i));
     const words = raw.map((s) => new Set(s.norm.split(" ").filter((w) => w.length >= 3)));
     byPlace.forEach((list, p) => {
       if (list.length < 3) return;
-      const shared = (i: number): number =>
-        list.filter((j) => j !== i && raw[j]?.name !== raw[i]?.name && [...(words[i] as Set<string>)].some((w) => words[j]?.has(w))).length;
       const located = (i: number): boolean => raw[i]?.lat !== null && raw[i]?.lon !== null;
+      const score = (i: number): [number, number, number] => {
+        let same = 0;
+        let shared = 0;
+        for (const j of list) {
+          if (j === i) continue;
+          if (raw[j]?.norm === raw[i]?.norm) same++;
+          if ([...(words[i] as Set<string>)].some((w) => words[j]?.has(w))) shared++;
+        }
+        return [same, shared, calls[i] as number];
+      };
+      const better = (a: [number, number, number], b: [number, number, number]): boolean =>
+        a[0] !== b[0] ? a[0] > b[0] : a[1] !== b[1] ? a[1] > b[1] : a[2] > b[2];
       const cur = namedBy[p] as number;
       let best = cur;
-      let bestShared = shared(cur);
+      let bestScore = score(cur);
       for (const i of list) {
         if (located(i) !== located(cur)) continue;
-        const n = shared(i);
-        if (n > bestShared || (n === bestShared && (calls[i] as number) > (calls[best] as number))) {
+        const sc = score(i);
+        if (better(sc, bestScore)) {
           best = i;
-          bestShared = n;
+          bestScore = sc;
         }
       }
       if (best === cur) return;
