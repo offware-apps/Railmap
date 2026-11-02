@@ -48,7 +48,7 @@
       "to": "destination station id (in tour mode: optional finish city; = from for a loop)",
       "date": "YYYY-MM-DD",
       "conn": "0 | 1 | 2 | 3 | 6 (max changes; 6 = unlimited; default 1)",
-      "card": "jeune | senior",
+      "card": "jeune | senior | interrail",
       "after": "HH:MM (depart after)",
       "before": "HH:MM (depart before)",
       "maxdur": "integer minutes (max total journey duration)",

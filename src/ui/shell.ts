@@ -2,6 +2,8 @@ import type { Theme, Density } from "../state/store";
 import { el, optionEl, isTouch } from "./dom";
 import { t, LANGS, getLang } from "../i18n";
 import { APP_VERSION, APP_BUILD } from "../config";
+import type { CardType } from "../types";
+import { parseCard } from "../data/profile";
 import {
   SHARE_SVG,
   CHECK_SVG,
@@ -15,7 +17,7 @@ import {
   themeSvg,
 } from "./icons";
 
-type Card = "jeune" | "senior";
+type Card = CardType;
 
 /** Callbacks and initial state the shell needs; it holds no app state of its own. */
 export interface ShellProps {
@@ -267,8 +269,9 @@ function buildHeader(props: ShellProps): { header: HTMLElement; cardSelect: HTML
   const cardSel = el("select", { class: "ctl", attrs: { "aria-label": t("field_card") } }, [
     optionEl("jeune", t("card_jeune"), props.card === "jeune"),
     optionEl("senior", t("card_senior"), props.card === "senior"),
+    optionEl("interrail", t("card_interrail"), props.card === "interrail"),
   ]) as HTMLSelectElement;
-  cardSel.addEventListener("change", () => props.onCard(cardSel.value === "senior" ? "senior" : "jeune"));
+  cardSel.addEventListener("change", () => props.onCard(parseCard(cardSel.value)));
 
   const installBtn = el("button", {
     class: "ctl install-btn",

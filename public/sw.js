@@ -7,19 +7,23 @@
  *  - Navigation requests  → network-first, fallback to cached shell
  *  - /data/*.json         → network-first, fallback to cache
  *  - Same-origin GET      → cache-first (hashed JS/CSS assets)
- *  - Cross-origin / POST  → passthrough, never cached
+ *  - train-api *.json     → network-first, fallback to cache (offline timetable)
+ *  - Other cross-origin / POST → passthrough, never cached
  */
 
 // Bump on every release that changes the build output. A new value forces the SW to
 // re-install and re-activate: the activate handler then deletes the previous cache
 // and navigates any client stranded on a stale shell (the white-page failure mode)
 // onto the freshly deployed one.
-const CACHE_NAME = "maxjeune-v37";
+const CACHE_NAME = "maxjeune-v38";
 
 // Minimal app shell — paths relative to the SW's scope (/Railmap/)
 // Vite injects a hashed index.html in the build output at the base path.
 // We store the scope root ("/Railmap/") as the shell fallback URL.
 const SHELL_URL = self.registration.scope; // e.g. "https://host/Railmap/"
+
+// Where the train-api timetable is served from (the `train-api` meta in index.html).
+const TRAIN_API_ORIGIN = "https://offware-apps.github.io";
 
 // ---------------------------------------------------------------------------
 // Install — precache the app shell
@@ -76,7 +80,14 @@ self.addEventListener("fetch", (event) => {
   const url = new URL(request.url);
   const scope = new URL(self.registration.scope);
 
-  // Never intercept cross-origin requests (SNCF API, map tiles, etc.)
+  // The train-api timetable replaces /data/*.json for most visitors, so keep the last
+  // copy for offline use the same way (see trainApiBase in src/config.ts).
+  if (url.origin === TRAIN_API_ORIGIN && url.pathname.startsWith("/train-api/") && url.pathname.endsWith(".json")) {
+    event.respondWith(networkFirstWithCacheFallback(request));
+    return;
+  }
+
+  // Never intercept other cross-origin requests (SNCF API, map tiles, etc.)
   if (url.origin !== scope.origin) return;
 
   const isSameOrigin = url.origin === scope.origin;

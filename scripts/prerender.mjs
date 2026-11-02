@@ -38,6 +38,10 @@ const browser = await puppeteer.launch({
 });
 
 const page = await browser.newPage();
+// The snapshot is built from the committed data, never the live train-api: anything off
+// this server fails fast, so the app falls back to dist/data like the other gates.
+await page.setRequestInterception(true);
+page.on("request", (req) => (/^(data:|blob:)/.test(req.url()) || req.url().startsWith(BASE.replace(/Railmap\/$/, "")) ? req.continue() : req.abort()));
 await page.evaluateOnNewDocument(() => {
   Object.defineProperty(navigator, "language", { get: () => "fr-FR" });
   Object.defineProperty(navigator, "languages", { get: () => ["fr-FR", "fr"] });
@@ -67,7 +71,10 @@ server.close();
 // flags so the static paint shows the plain active segment (highlighted by its CSS
 // fallback background); hydration re-adds the pill, correctly placed for the real
 // viewport, with no initial animation.
+// theme.js adds the dataset preload at runtime for the visitor's pass; one baked in here
+// would point at the prerender server and fetch the MAX file for every pass.
 html = html
+  .replace(/<link\b[^>]*\bdata-dataset-preload\b[^>]*>/g, "")
   .replace(/(<html\b[^>]*?)\s+data-map="off"/, "$1")
   .replace(/(<span class="mode-tab-thumb"[^>]*?)\s+style="[^"]*"/g, "$1")
   .replace(/(class="[^"]*?)\s+has-thumb\b/g, "$1")
@@ -79,6 +86,8 @@ if (!html.includes('<html lang="fr"')) failures.push("prerendered HTML is not in
 if (!html.includes('id="app"')) failures.push("prerendered HTML lost #app");
 if (!html.includes("application/ld+json")) failures.push("prerendered HTML lost JSON-LD");
 if (!html.includes("<noscript")) failures.push("prerendered HTML lost the noscript fallback");
+if (!html.includes('<meta name="train-api"')) failures.push("prerendered HTML lost the train-api meta");
+if (html.includes("data-dataset-preload")) failures.push("prerendered HTML carries a baked dataset preload");
 if (/leaflet|assets\/map-/.test(html)) failures.push("prerendered HTML carries the map (Leaflet DOM or map chunk)");
 if (failures.length) {
   console.error("PRERENDER FAILED:");

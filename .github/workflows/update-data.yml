@@ -37,7 +37,7 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add public/data/tgvmax.json public/data/meta.json
+          git add public/data/tgvmax.json public/data/meta.json public/data/interrail.json public/data/interrail-meta.json
           if git diff --cached --quiet; then
             echo "No changes to commit."
           else

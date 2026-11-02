@@ -72,6 +72,7 @@ describe("normalizeRecord", () => {
       isReservable: (r) => r.free === true,
       hubs: [],
       nonBookablePatterns: [],
+      seatKnown: true,
     };
     const raw = { from: "ALPHA", to: "BETA", day: "2026-07-01", dep: "08:00", arr: "10:30", no: "Z9", kind: "ICE", free: true } as unknown as RawRecord;
     const t = normalizeRecord(raw, demo)!;

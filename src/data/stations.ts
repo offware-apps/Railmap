@@ -71,6 +71,8 @@ export class StationRegistry {
   private cityKeys: { key: string; info: CityInfo }[] = [];
   // Ids actually present in the loaded dataset (i.e. bookable).
   private present = new Set<string>();
+  // Ids addMissing() registered on top of the curated stations; setPresent() drops them.
+  private extra = new Set<string>();
   // Normalised name → station, for resolve(); rebuilt after addMissing().
   private exact: Map<string, Station> | null = null;
 
@@ -135,6 +137,7 @@ export class StationRegistry {
       this.present.add(id);
       if (this.byId.has(id)) continue;
       const m = this.matchCity(id);
+      this.extra.add(id);
       this.add({
         id,
         label: prettyLabel(id),
@@ -144,6 +147,18 @@ export class StationRegistry {
         region: m?.region,
       });
     }
+  }
+
+  /**
+   * Swap in another dataset's stations (a pass switch): forget the stations the previous
+   * dataset added and what it marked bookable, then {@link addMissing} this one's.
+   */
+  setPresent(ids: Iterable<string>): void {
+    for (const id of this.extra) this.byId.delete(id);
+    this.index = this.index.filter((e) => !this.extra.has(e.station.id));
+    this.extra.clear();
+    this.present.clear();
+    this.addMissing(ids);
   }
 
   get(id: string): Station | undefined {

@@ -33,6 +33,8 @@ export const LANGS: ReadonlyArray<{ code: Lang; label: string }> = [
 ];
 
 let current: Lang = "fr";
+/** True when the loaded pass's data can't say whether a seat is left (Interrail). */
+let seatUnknown = false;
 
 export function isLang(x: unknown): x is Lang {
   return typeof x === "string" && LANGS.some((l) => l.code === x);
@@ -54,8 +56,18 @@ export function detectLang(): Lang {
   return isLang(code) ? code : "fr";
 }
 
+/**
+ * Switch copy to the "seat unknown" wording (Interrail). A key with an `<key>_ir`
+ * variant then reads that variant, so no screen claims a free MAX seat it can't know.
+ */
+export function setSeatUnknown(on: boolean): void {
+  seatUnknown = on;
+}
+
 /** Translate `key`, substituting `{name}` placeholders from `params`. */
 export function t(key: keyof Dict, params?: Record<string, string | number>): string {
+  const ir = `${key}_ir` as keyof Dict;
+  if (seatUnknown && ir in fr) key = ir;
   let s: string = dicts[current][key] ?? fr[key] ?? String(key);
   if (params) {
     for (const [k, v] of Object.entries(params)) {

@@ -45,7 +45,9 @@ const server = http.createServer((req, res) => {
   if (!existsSync(file) || statSync(file).isDirectory()) file = join(DIST, "index.html");
   if (!existsSync(file)) return res.writeHead(404).end("not found");
   res.writeHead(200, { "Content-Type": TYPES[extname(file)] || "application/octet-stream" });
-  res.end(readFileSync(file));
+  // Runs on the bundled snapshot, never the live train-api (see trainApiBase in src/config.ts).
+  const body = readFileSync(file);
+  res.end(file.endsWith(".html") ? body.toString("utf-8").replace(/<meta name="train-api"[^>]*>/, "") : body);
 });
 await new Promise((r) => server.listen(0, "127.0.0.1", r));
 const PORT = server.address().port;
@@ -799,6 +801,34 @@ await scenario(
     await fire("gesturechange", { scale: 0.4 });
     await fire("gestureend", { scale: 0.4 });
     assert(await until(async () => (await zoom()) < z1), "a Safari pinch did not zoom the map out");
+  },
+);
+
+// Switching MAX → Interrail loads the other timetable with the page still up: no
+// navigation, a "Loading…" pill over dimmed results, then the Interrail results.
+await scenario(
+  "pass: switching to Interrail swaps the timetable in place, without reloading",
+  `${BASE}?mode=od&from=${enc(P)}&to=${enc(L)}&date=${RT_DATE}`,
+  async (page) => {
+    assert(await until(async () => (await $count(page, "article.journey")) > 0), "precondition: no MAX results");
+    await page.evaluate(() => {
+      window.__samePage = true;
+    });
+    await page.select(".header-quick select", "interrail");
+    assert(await until(async () => urlParam(page, "card") === "interrail"), "the URL did not take card=interrail");
+    const swapped = await until(async () =>
+      (await $count(page, ".pass-spinner")) === 0 &&
+      (await $count(page, ".results .notice")) > 0 &&
+      (await $count(page, "article.journey")) > 0
+        ? true
+        : null,
+    );
+    assert(swapped, `Interrail results did not show (results "${(await $text(page, ".results"))?.slice(0, 80)}")`);
+    assert(await page.evaluate(() => window.__samePage === true), "the page reloaded");
+    // And back: the MAX timetable is already loaded, so it shows without a pill.
+    await page.select(".header-quick select", "jeune");
+    assert(await until(async () => (await $count(page, ".results .notice")) === 0 && (await $count(page, "article.journey")) > 0), "MAX results did not come back");
+    assert(await page.evaluate(() => window.__samePage === true), "the page reloaded going back to MAX");
   },
 );
 

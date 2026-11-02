@@ -1,4 +1,14 @@
-import { DATA_URL, META_URL, SNCF_API_URL, HUB_STATIONS, NON_BOOKABLE_PATTERNS } from "../config";
+import {
+  DATA_URL,
+  META_URL,
+  INTERRAIL_DATA_URL,
+  INTERRAIL_META_URL,
+  SNCF_API_URL,
+  HUB_STATIONS,
+  NON_BOOKABLE_PATTERNS,
+} from "../config";
+import type { CardType } from "../types";
+import { decodeCompact, isCompact } from "./compact";
 
 /**
  * A data-source PROFILE: everything about reading and judging ONE train dataset.
@@ -7,8 +17,8 @@ import { DATA_URL, META_URL, SNCF_API_URL, HUB_STATIONS, NON_BOOKABLE_PATTERNS }
  * `MaxTrain` shape, so the SNCF-specifics live here at the edge. Adding another
  * operator later (Deutsche Bahn, Renfe, …) means supplying another profile — a
  * different field mapping and a different "is this seat bookable?" rule — without
- * touching the core. SNCF "tgvmax" is the default profile, and the app currently
- * ships only it (branding, the MAX pass, and the UI stay SNCF-specific for now).
+ * touching the core. SNCF "tgvmax" (the MAX pass) is the default profile; the
+ * Interrail profile reads the same SNCF feed but keeps every running train.
  */
 export interface DatasetProfile {
   /** Stable identifier, e.g. "sncf-tgvmax". */
@@ -34,6 +44,18 @@ export interface DatasetProfile {
    * sources with no such exclusions.
    */
   nonBookablePatterns: string[];
+  /**
+   * Does the data say whether a seat is left for this pass? SNCF publishes it for MAX;
+   * no open data does for Interrail, so its trains show as running with the seat unknown.
+   */
+  seatKnown: boolean;
+  /**
+   * Turn the parsed snapshot file into raw records. Omitted = the file is already a
+   * plain array of records.
+   */
+  decode?: (json: unknown) => RawSourceRecord[] | null;
+  /** This pass's id in train-api (`<base>/sncf/<pass>/all.json`); omitted = snapshot only. */
+  trainApiPass?: string;
 }
 
 /** One raw record before normalization — shape varies per source, so it's untyped. */
@@ -58,7 +80,7 @@ function str(v: unknown): string | undefined {
 }
 
 /**
- * SNCF "tgvmax" — the default (and, for now, only) profile. Encodes today's exact
+ * SNCF "tgvmax" — the default profile (the MAX pass). Encodes today's exact
  * behaviour: French field names, and a free MAX seat means `od_happy_card === "OUI"`.
  */
 export const SNCF_PROFILE: DatasetProfile = {
@@ -78,4 +100,35 @@ export const SNCF_PROFILE: DatasetProfile = {
   isReservable: (r) => str(r.od_happy_card)?.toUpperCase() === "OUI",
   hubs: HUB_STATIONS,
   nonBookablePatterns: NON_BOOKABLE_PATTERNS,
+  seatKnown: true,
+  // Both MAX cards read the MAX JEUNE timetable; MAX SENIOR's weekday rule stays a notice.
+  trainApiPass: "max-jeune",
 };
+
+/**
+ * SNCF trains for an Interrail pass holder. Every TGV INOUI, Intercités, night and
+ * international train in the feed takes a pass-holder reservation, so every train that
+ * runs counts. Nothing says whether a pass-holder seat is left (`seatKnown: false`),
+ * and international stops are fine (no exclusions). The snapshot is the compact file.
+ */
+export const INTERRAIL_PROFILE: DatasetProfile = {
+  ...SNCF_PROFILE,
+  id: "sncf-interrail",
+  dataUrl: INTERRAIL_DATA_URL,
+  metaUrl: INTERRAIL_META_URL,
+  isReservable: () => true,
+  nonBookablePatterns: [],
+  seatKnown: false,
+  decode: (json) => (isCompact(json) ? (decodeCompact(json) as unknown as RawSourceRecord[]) : null),
+  trainApiPass: "interrail",
+};
+
+/** Read any value as a pass, defaulting to MAX JEUNE. */
+export function parseCard(x: unknown): CardType {
+  return x === "senior" || x === "interrail" ? x : "jeune";
+}
+
+/** The dataset a pass searches: both MAX subscriptions share the MAX snapshot. */
+export function profileForCard(card: CardType): DatasetProfile {
+  return card === "interrail" ? INTERRAIL_PROFILE : SNCF_PROFILE;
+}

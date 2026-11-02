@@ -1308,6 +1308,15 @@ a {
   font-size: 0.86rem;
   font-weight: 560;
 }
+/* One quiet line on an exact trip: the train's CO₂ against car and plane. */
+.eco-line {
+  background: var(--accent-soft);
+  border-radius: var(--radius-sm);
+  padding: 0.4rem 0.75rem;
+  color: var(--text);
+  font-size: 0.8rem;
+  line-height: 1.4;
+}
 
 /* ---- buttons ---- */
 .btn {
@@ -1549,6 +1558,34 @@ a {
   border-top-color: var(--accent);
   border-radius: 50%;
   animation: mf-spin 0.7s linear infinite;
+}
+.pass-loading .results {
+  opacity: 0.45;
+  pointer-events: none;
+  transition: opacity 0.2s ease;
+}
+/* Another pass's timetable is loading: a pill over the page, which stays as it was. */
+.pass-spinner {
+  position: fixed;
+  bottom: calc(1.25rem + env(safe-area-inset-bottom, 0px));
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 2000;
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  padding: 0.5rem 0.95rem 0.5rem 0.7rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  box-shadow: var(--shadow);
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+.pass-spinner .spinner {
+  width: 16px;
+  height: 16px;
+  border-width: 2px;
 }
 @keyframes mf-spin {
   to {

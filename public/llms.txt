@@ -43,7 +43,7 @@ Query params:
 - `from`: origin station id ; `to`: destination station id (in `mode=tour`, the optional finish city; set `to`=`from` for a loop)
 - `date`: `YYYY-MM-DD`
 - `conn`: `0` | `1` | `2` | `3` | `6` (max changes; 6 = unlimited; default 1)
-- `card`: `jeune` | `senior`
+- `card`: `jeune` | `senior` | `interrail` (Interrail: every running train, seat unknown; data in `/data/interrail.json`, the compact format of `src/data/compact.ts`)
 - `after` / `before`: `HH:MM` departure window ; `arrbefore`: `HH:MM` arrive-before cutoff ; `maxdur`: minutes ; `type`: axis
 - `via`: station id to route through (`mode=od`)
 - `flex`: `1` | `2` | `3` | `7` — also search ± N days around `date` (`mode=od/from/to/tour`)

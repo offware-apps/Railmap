@@ -44,9 +44,9 @@ export const fr = {
   card_jeune: "MAX JEUNE",
   card_senior: "MAX SENIOR",
   how_title: "Comment ça marche ?",
-  how_jeune: "MAX JEUNE : réservations gratuites 7j/7, dans la limite des places.",
+  how_jeune: "MAX JEUNE (16 à 27 ans) : 79 € par mois, engagement 12 mois. Places à 0 € en 2de classe dans les TGV INOUI, OUIGO grande vitesse et Intercités à réservation, en France, au Luxembourg et à Fribourg. Pas de place à 0 € le vendredi et le dimanche après-midi et soir, ni les veilles de grands départs.",
   how_senior:
-    "MAX SENIOR : du lundi au vendredi en heures creuses — pas le week-end, ni en forte affluence (ven. après-midi/soir, lun. matin, veilles de ponts et vacances).",
+    "MAX SENIOR (60 ans et plus, même prix) : du lundi au vendredi en heures creuses — pas le week-end, ni en forte affluence (ven. après-midi/soir, lun. matin, veilles de ponts et vacances).",
   how_note:
     "Cet outil affiche les places MAX ouvertes à la réservation (open data SNCF) ; il n'applique pas ces règles par abonnement. Vérifiez sur SNCF Connect.",
   senior_weekend_warn: "MAX SENIOR n'est pas valable le week-end.",
@@ -308,6 +308,29 @@ export const fr = {
   form_cal_flex_hint: "Choisissez l'aller, puis le retour",
   form_cal_range: "Aller : {from} → Retour : {to}",
   form_cal_range_await: "Aller : {from} — choisissez le retour",
+  // Interrail pass. `<key>_ir` replaces `<key>` when the seat is unknown (see setSeatUnknown).
+  card_interrail: "Interrail",
+  how_interrail: "Interrail : un seul pass pour les trains de 33 pays d'Europe. TGV, Intercités, trains de nuit et internationaux demandent une réservation payante (10 à 20 € en TGV, places limitées).",
+  interrail_seat_notice: "Interrail : ces trains circulent et se prennent avec une réservation pass. Aucune donnée ouverte ne dit s'il reste une place pass, vérifiez en réservant.",
+  how_max_rules: "MAX : réservation dès 30 jours avant, 6 trajets réservés au maximum, un trajet à 0 € par jour depuis une même gare, et chaque trajet à confirmer 1 à 2 jours avant.",
+  how_ir_who: "Qui peut l'utiliser : les personnes qui vivent en Europe (citoyennes ou résidentes légales d'un des 33 pays). Les autres prennent un pass Eurail. Jeune jusqu'à 27 ans, senior dès 60 ans, enfants de 4 à 11 ans gratuits avec un pass Enfant.",
+  how_ir_home: "Vous vivez en France ? Un pass Global ne couvre qu'un trajet pour sortir de France et un pour y revenir, et le pass One Country n'existe pas pour son propre pays.",
+  how_ir_link: "Interrail : qui peut l'utiliser",
+  how_eco: "Écologie : en TGV, un trajet émet environ 50 fois moins de CO₂ qu'en voiture seul et 100 fois moins qu'en avion (chiffres ADEME).",
+  eco_trip: "En train, ce trajet émet environ {train} kg de CO₂e, contre {car} kg en voiture seul et {plane} kg en avion (ADEME, {km} km à vol d'oiseau).",
+  eco_link: "Calculs CO₂ de l'ADEME",
+  tagline_ir: "Trains SNCF avec un pass Interrail.",
+  how_note_ir: "Cet outil affiche les trains qui circulent (open data SNCF) ; il ne sait pas s'il reste une place pass. Vérifiez sur SNCF Connect.",
+  multi_incomplete_ir: "Certains trajets n'ont aucun train — cet itinéraire est incomplet.",
+  tour_none_ir: "Aucun itinéraire pour ces villes et dates.",
+  res_none_ir: "Aucun train pour ces critères.",
+  nearby_none_ir: "Aucune gare voisine n'a de train pour ce trajet.",
+  hidden_hint_ir: "Aucun train pour votre trajet exact ? Réservez jusqu'à une gare située après la vôtre, sur un train qui dessert votre gare, et descendez plus tôt. Même départ. À vos risques : vérifiez toujours sur SNCF Connect.",
+  book_steps_note_ir: "Une correspondance se réserve train par train — ouvrez chaque lien dans l’ordre.",
+  cal_legend_ir: "vert = au moins un train",
+  ret_none_ir: "Aucun retour ce jour-là.",
+  stat_window_hint_ir: "{trains} trains vers cette destination sur {days} jours à venir. Ouvrez le trajet précis pour voir les dates exactes.",
+  getaway_none_ir: "Aucun aller-retour pour ces critères.",
 };
 
 export type Dict = typeof fr;

@@ -9,6 +9,9 @@ import "@fontsource/space-mono/400.css";
 import "@fontsource/space-mono/700.css";
 import "./styles.css";
 import { loadDataset } from "./data/dataset";
+import { parseCard, profileForCard } from "./data/profile";
+import { loadSettings } from "./state/store";
+import { trainApiBase } from "./config";
 import { StationRegistry } from "./data/stations";
 import type { Station } from "./types";
 import stationData from "../data/stations.json";
@@ -61,7 +64,10 @@ if (root) {
     root.replaceChildren(loadingStateEl());
   }
   const registry = new StationRegistry(stationData as Station[]);
-  loadDataset().then(
+  // The pass picks the dataset: a link's card= wins, else the pass the user saved.
+  const linkedCard = new URLSearchParams(location.search).get("card");
+  const card = linkedCard ? parseCard(linkedCard) : loadSettings().card;
+  loadDataset(profileForCard(card), trainApiBase()).then(
     (dataset) => {
       try {
         initApp(root, dataset, registry);

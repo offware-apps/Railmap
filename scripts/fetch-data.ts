@@ -2,9 +2,12 @@
  * scripts/fetch-data.ts
  *
  * Downloads the full SNCF tgvmax dataset via the Opendatasoft Explore API v2.1
- * export endpoint and writes:
- *   data/tgvmax.json  – full mapped record array (compact JSON)
- *   data/meta.json    – freshness metadata
+ * export endpoint and writes, under public/data/:
+ *   tgvmax.json          – the MAX pass: trains with a free MAX seat (record array)
+ *   meta.json            – its freshness metadata
+ *   interrail.json       – the Interrail pass: every train in the feed, in the
+ *                          compact format of src/data/compact.ts
+ *   interrail-meta.json  – its freshness metadata
  *
  * Run via: npm run fetch-data  (tsx scripts/fetch-data.ts)
  */
@@ -13,6 +16,7 @@
 // fs, path, and process so we can import them without @types/node.
 import * as fs from "fs";
 import * as path from "path";
+import { encodeCompact } from "../src/data/compact";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -47,6 +51,8 @@ const MAX_RETRIES = 3;
 const REPO_ROOT = process.cwd();
 const OUT_DATA = path.resolve(REPO_ROOT, "public", "data", "tgvmax.json");
 const OUT_META = path.resolve(REPO_ROOT, "public", "data", "meta.json");
+const OUT_IR_DATA = path.resolve(REPO_ROOT, "public", "data", "interrail.json");
+const OUT_IR_META = path.resolve(REPO_ROOT, "public", "data", "interrail-meta.json");
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -186,6 +192,23 @@ async function main(): Promise<void> {
 
   fs.writeFileSync(OUT_META, JSON.stringify(meta, null, 2), "utf-8");
   console.log(`[fetch-data] Wrote metadata → ${OUT_META}`);
+
+  // Interrail: every train that runs takes a pass-holder reservation, seat or not, so
+  // keep them all. Each distinct service is stored once with the dates it runs on, which
+  // keeps the whole feed a static file instead of ~65 MB of repeated rows.
+  const compact = encodeCompact(mapped.filter((r) => r.origine && r.destination && r.date));
+  const irMeta: Meta = {
+    updatedAt: meta.updatedAt,
+    source: "SNCF Open Data — tgvmax, all trains (Licence Ouverte)",
+    recordCount: mapped.length,
+    isSample: false,
+  };
+  fs.writeFileSync(OUT_IR_DATA, JSON.stringify(compact), "utf-8");
+  console.log(
+    `[fetch-data] Wrote ${compact.trains.length} services (${mapped.length} trains) → ${OUT_IR_DATA}`,
+  );
+  fs.writeFileSync(OUT_IR_META, JSON.stringify(irMeta, null, 2), "utf-8");
+  console.log(`[fetch-data] Wrote metadata → ${OUT_IR_META}`);
   console.log(`[fetch-data] Done. updatedAt=${meta.updatedAt}`);
 }
 

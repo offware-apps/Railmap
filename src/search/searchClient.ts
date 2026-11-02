@@ -51,7 +51,7 @@ function ensureWorker(): Worker | null {
  * caches. Resolves once done (or immediately if the worker can't help), so the caller
  * can render right after. Never throws.
  */
-export function warmSearch(trains: MaxTrain[], query: SearchQuery, today: string): Promise<void> {
+export function warmSearch(trains: MaxTrain[], query: SearchQuery, today: string, api = ""): Promise<void> {
   const w = ensureWorker();
   if (!w) return Promise.resolve();
   const id = ++seq;
@@ -75,7 +75,7 @@ export function warmSearch(trains: MaxTrain[], query: SearchQuery, today: string
       if (pending.delete(id)) finish(null);
     }, 4000);
     try {
-      w.postMessage({ id, query, today });
+      w.postMessage({ id, query, today, api });
     } catch {
       pending.delete(id);
       finish(null);

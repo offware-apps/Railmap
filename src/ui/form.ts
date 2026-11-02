@@ -121,6 +121,9 @@ export interface FormProps {
   overnightMaxConnectionMin: number;
   jeuneUrl: string;
   seniorUrl: string;
+  interrailUrl: string;
+  interrailPassUrl: string;
+  ecoUrl: string;
   resolveStation: (text: string) => string | undefined;
   stationLabel: (id: string) => string;
   mode: () => SearchMode;
@@ -177,6 +180,8 @@ export interface FormHandle {
   /** The first station field of the active Multi-city surface whose text names no
    *  station, after flagging every such field. */
   invalidStation(): HTMLInputElement | undefined;
+  /** Replace the station suggestions (another pass's timetable was loaded). */
+  setStationLabels(labels: string[]): void;
   /** Tear down date-picker popovers (which live in <body>) before the form is discarded. */
   destroy(): void;
 }
@@ -1468,12 +1473,23 @@ export function createForm(props: FormProps): FormHandle {
     el("ul", { class: "howto-list" }, [
       el("li", { text: t("how_jeune") }),
       el("li", { text: t("how_senior") }),
+      el("li", { text: t("how_max_rules") }),
+      el("li", { text: t("how_interrail") }),
+      el("li", { text: t("how_ir_who") }),
+      el("li", { text: t("how_ir_home") }),
+      el("li", { text: t("how_eco") }),
     ]),
     el("p", { class: "howto-links" }, [
       el("span", { class: "muted", text: `${t("how_more")} ` }),
       el("a", { text: "MAX JEUNE", href: props.jeuneUrl, attrs: { target: "_blank", rel: "noopener noreferrer" } }),
       el("span", { class: "muted", text: " · " }),
       el("a", { text: "MAX SENIOR", href: props.seniorUrl, attrs: { target: "_blank", rel: "noopener noreferrer" } }),
+      el("span", { class: "muted", text: " · " }),
+      el("a", { text: "Interrail", href: props.interrailUrl, attrs: { target: "_blank", rel: "noopener noreferrer" } }),
+      el("span", { class: "muted", text: " · " }),
+      el("a", { text: t("how_ir_link"), href: props.interrailPassUrl, attrs: { target: "_blank", rel: "noopener noreferrer" } }),
+      el("span", { class: "muted", text: " · " }),
+      el("a", { text: t("eco_link"), href: props.ecoUrl, attrs: { target: "_blank", rel: "noopener noreferrer" } }),
     ]),
     el("p", { class: "muted small", text: t("how_note") }),
   ]);
@@ -1599,6 +1615,7 @@ export function createForm(props: FormProps): FormHandle {
   return {
     form,
     refs,
+    setStationLabels: (labels) => stationList.replaceChildren(...labels.map((label) => el("option", { value: label }))),
     getTourCities: () => [...tourCities],
     setTourCities: (ids) => {
       tourCities = [...ids];

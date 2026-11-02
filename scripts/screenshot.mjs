@@ -29,7 +29,9 @@ const server = http.createServer((req, res) => {
   if (!existsSync(file) || statSync(file).isDirectory()) file = join(DIST, "index.html");
   if (!existsSync(file)) return res.writeHead(404).end("not found");
   res.writeHead(200, { "Content-Type": TYPES[extname(file)] || "application/octet-stream" });
-  res.end(readFileSync(file));
+  // Runs on the bundled snapshot, never the live train-api (see trainApiBase in src/config.ts).
+  const body = readFileSync(file);
+  res.end(file.endsWith(".html") ? body.toString("utf-8").replace(/<meta name="train-api"[^>]*>/, "") : body);
 });
 
 await new Promise((r) => server.listen(0, "127.0.0.1", r));

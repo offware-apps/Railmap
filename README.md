@@ -35,11 +35,13 @@ It also handles connections (up to 6 changes, an optional stopover city, overnig
 
 ## Supported passes
 
-| Pass | Status | What Railmap shows |
+| Pass | Who can use it | How it works |
 | --- | --- | --- |
-| MAX JEUNE (16 to 27) | Available | Trains with a free MAX seat open for booking |
-| MAX SENIOR (60+) | Available | Trains with a free MAX seat open for booking |
-| Interrail | In progress ([#83](https://github.com/offware-apps/Railmap/pull/83)) | Every SNCF train a pass holder can take, international stops included |
+| **[MAX JEUNE](https://www.sncf-connect.com/catalogue/description/max-jeune)** | 16 to 27, €79/month, 12-month minimum | €0 seats in 2nd class on TGV INOUI, OUIGO high-speed and Intercités with reservation, in France plus Luxembourg and Freiburg. Book up to 30 days ahead, 6 trips at a time, one €0 trip a day from the same station, confirm 1 to 2 days before. No €0 seats on Friday and Sunday afternoons and evenings or holiday eves. Railmap shows the trains with a free MAX seat open for booking. |
+| **[MAX SENIOR](https://www.sncf-connect.com/catalogue/description/max-senior)** | 60 and over, same price | Same €0 seats as MAX JEUNE. |
+| **[Interrail](https://www.interrail.com/en/interrail-passes/global-pass)** | Residents of the 33 Interrail countries (everyone else buys Eurail). Youth up to 27, senior from 60, children 4 to 11 free with a Child Pass | Any train with a pass-holder reservation (€10 to 20 on TGV, limited seats). Living in France: a Global Pass covers only one trip out of France and one trip back in, and there is no One Country Pass for your own country. Railmap shows every SNCF train a pass holder can take, international stops included. |
+
+**Lower carbon.** A TGV trip emits about 50 times less CO₂ than driving alone and 100 times less than flying ([ADEME](https://impactco2.fr/outils/transport)). Each exact trip shows its own figure.
 
 Booking always happens on [SNCF Connect](https://www.sncf-connect.com/). Railmap is an independent project, not affiliated with SNCF, and does not sell tickets. Availability is refreshed about once a day, so confirm before you book.
 
@@ -101,9 +103,10 @@ specs/        guiding principles
 
 SNCF publishes which trains have a free MAX seat as open data. Railmap is a static site on top of it:
 
-1. A scheduled GitHub Action downloads the dataset each morning and keeps only the trains with a free seat (about 77 MB trimmed to about 6 MB).
-2. Your browser downloads that file and runs every search on your device. It can query the SNCF API directly as a fallback.
-3. Everything is served as static files from GitHub Pages. There is no backend, no database and no server cost.
+1. [train-api](https://github.com/offware-apps/train-api) publishes each pass's timetable every morning as static JSON. The app reads it first.
+2. A scheduled GitHub Action also snapshots the dataset into the app itself (about 77 MB trimmed to about 6 MB), which the app falls back to when train-api is unreachable or out of date.
+3. Your browser downloads the timetable and runs every search on your device.
+4. Everything is served as static files from GitHub Pages. There is no backend, no database and no server cost.
 
 More detail:
 

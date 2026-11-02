@@ -3,6 +3,7 @@ import type { Tour } from "../core/tour";
 import { stayFromNights } from "../core/roundtrip";
 import { dayIndex, parseTimeToMinutes } from "../util/time";
 import { isLang, detectLang, type Lang } from "../i18n";
+import { parseCard } from "../data/profile";
 
 /** URL token for a stay choice (compact + stable): stay=day|<N>|flex, where <N> is the
  *  fixed nights count for a `` `n${N}` `` stay (any N). */
@@ -81,7 +82,7 @@ export function loadSettings(): Settings {
   return {
     lang: isLang(s.lang) ? s.lang : detectLang(),
     theme: s.theme === "light" || s.theme === "dark" ? s.theme : "auto",
-    card: s.card === "senior" ? "senior" : "jeune",
+    card: parseCard(s.card),
     view: s.view === "map" ? "map" : "list",
     density: s.density === "compact" ? "compact" : "comfortable",
     reduceMotion: s.reduceMotion === true,
@@ -353,7 +354,7 @@ export function queryFromParams(p: URLSearchParams, fallbackDate: string): Searc
     returnDate: isoDate("rdate"),
     legs: parseLegs(p.get("legs")),
     date: isoDate("date") ?? fallbackDate,
-    card: p.get("card") === "senior" ? "senior" : "jeune",
+    card: parseCard(p.get("card")),
     departAfter: time("after"),
     departBefore: time("before"),
     arriveBefore: time("arrbefore"),

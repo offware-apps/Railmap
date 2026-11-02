@@ -1,7 +1,7 @@
 // Domain types for Railmap.
 
-/** Which MAX subscription the user holds. */
-export type CardType = "jeune" | "senior";
+/** The pass the user travels on: the two MAX subscriptions, or an Interrail pass. */
+export type CardType = "jeune" | "senior" | "interrail";
 
 /** Search intent. */
 export type SearchMode = "from" | "to" | "od" | "best" | "tour";
@@ -46,7 +46,7 @@ export interface MaxTrain {
   arriveMin: number; // minutes from midnight (arrival, +1440 if past midnight)
   durationMin: number;
   trainNo: string;
-  available: boolean; // od_happy_card === "OUI"
+  available: boolean; // bookable with the pass: MAX = od_happy_card "OUI"; Interrail = the train runs
   axe?: string;
 }
 

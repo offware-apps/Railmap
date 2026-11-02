@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta
       http-equiv="Content-Security-Policy"
-      content="default-src 'self'; img-src 'self' data: https:; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'self' https://ressources.data.sncf.com; worker-src 'self'; base-uri 'self'"
+      content="default-src 'self'; img-src 'self' data: https:; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'self' https://ressources.data.sncf.com https://offware-apps.github.io; worker-src 'self'; base-uri 'self'"
     />
     <title>Trains MAX JEUNE / MAX SENIOR (ex-TGVmax) réservables — Railmap</title>
     <meta
@@ -32,13 +32,14 @@
       content="Toutes les places MAX JEUNE / MAX SENIOR ouvertes à la réservation, mises à jour chaque jour depuis l'open data SNCF."
     />
     <meta name="twitter:image" content="https://offware-apps.github.io/Railmap/icons/og.png" />
+    <!-- Where the timetables come from first (src/config.ts trainApiBase); empty = the bundled snapshot only. -->
+    <meta name="train-api" content="https://offware-apps.github.io/train-api/v1" />
     <link rel="manifest" href="manifest.webmanifest" />
     <meta name="theme-color" content="#0f7a52" />
     <link rel="icon" type="image/svg+xml" href="icons/icon.svg" />
     <link rel="apple-touch-icon" href="icons/apple-touch-icon.png" />
     <link rel="alternate" type="text/plain" href="llms.txt" title="LLM instructions" />
     <link rel="alternate" type="application/json" href="api.json" title="Railmap machine API" />
-    <link rel="preload" href="%BASE_URL%data/tgvmax.json" as="fetch" crossorigin />
     <script type="application/ld+json">
       {
         "@context": "https://schema.org",

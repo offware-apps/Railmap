@@ -56,6 +56,20 @@ describe("StationRegistry.search", () => {
   });
 });
 
+describe("StationRegistry.setPresent", () => {
+  it("swaps one dataset's stations for another's", () => {
+    const r = new StationRegistry(stationData as Station[]);
+    r.addMissing(["ARRAS", "PARIS (intramuros)"]);
+    r.setPresent(["PARIS (intramuros)", "ZZ MADE UP GARE"]);
+    expect(r.get("ARRAS")).toBeUndefined();
+    expect(r.search("arras")).toHaveLength(0);
+    expect(r.get("ZZ MADE UP GARE")).toBeDefined();
+    expect(r.resolve("PARIS (intramuros)")).toBe("PARIS (intramuros)");
+    // The curated stations stay.
+    expect(r.get("LILLE")).toBeDefined();
+  });
+});
+
 describe("StationRegistry.addMissing", () => {
   it("makes dataset-only stations searchable, with a pretty label", () => {
     const r = new StationRegistry(stationData as Station[]);

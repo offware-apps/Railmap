@@ -1,6 +1,7 @@
-import type { Dataset } from "./data/dataset";
+import { loadDataset, type Dataset } from "./data/dataset";
+import { SNCF_PROFILE, parseCard, profileForCard, type DatasetProfile } from "./data/profile";
 import { StationRegistry } from "./data/stations";
-import type { SearchQuery, SearchMode, MaxTrain, Journey, SortKey, CalendarDay, StayChoice } from "./types";
+import type { CardType, SearchQuery, SearchMode, MaxTrain, Journey, SortKey, CalendarDay, StayChoice } from "./types";
 import { stayNights, stayFromNights } from "./core/roundtrip";
 import {
   reachableDestinations,
@@ -25,6 +26,7 @@ import { availabilityCalendar, reachableCountCalendar, dateRange } from "./core/
 import { findHiddenTrains } from "./core/hidden";
 import { addDays, dayIndex, formatDuration, minutesToHHMM } from "./util/time";
 import { haversineKm } from "./util/geo";
+import { tripCo2 } from "./util/eco";
 import { el, clear, isTouch } from "./ui/dom";
 import { buildShell, applyTheme, applyDensity, applyReduceMotion, applyMap, closeHeaderMenu } from "./ui/shell";
 import { showPostcard } from "./ui/toast";
@@ -44,15 +46,19 @@ import {
   modalPopstate,
 } from "./ui/modals";
 import { generateBookingUrl } from "./util/booking";
-import { t, setLang, getLang, isLang } from "./i18n";
+import { t, setLang, getLang, isLang, setSeatUnknown } from "./i18n";
 import * as store from "./state/store";
 import {
   MAX_JEUNE_URL,
   MAX_SENIOR_URL,
+  INTERRAIL_FRANCE_URL,
+  INTERRAIL_PASS_URL,
+  ADEME_CO2_URL,
   GITHUB_URL,
   GITHUB_ISSUES_URL,
   OVERNIGHT_MAX_CONNECTION_MIN,
   SAME_DAY_MIN_ON_SITE_MIN,
+  trainApiBase,
 } from "./config";
 import { filterOptsFor, odConnOptsFor, odJourneyOptsFor, getawayOptsFor } from "./core/queryOpts";
 import { warmSearch } from "./search/searchClient";
@@ -61,6 +67,10 @@ import { notify } from "./pwa/register";
 interface Deps {
   trains: MaxTrain[];
   meta: Dataset["meta"];
+  /** The dataset's profile: which pass's trains are loaded. */
+  profile: DatasetProfile;
+  /** The train-api base the trains came from ("" = the snapshot); the worker reads the same. */
+  apiBase: string;
   registry: StationRegistry;
 }
 
@@ -609,7 +619,16 @@ async function promptInstall(): Promise<void> {
 }
 
 export function initApp(root: HTMLElement, dataset: Dataset, registry: StationRegistry): void {
-  deps = { trains: dataset.trains, meta: dataset.meta, registry };
+  deps = {
+    trains: dataset.trains,
+    meta: dataset.meta,
+    profile: dataset.profile ?? SNCF_PROFILE,
+    apiBase: dataset.apiBase ?? "",
+    registry,
+  };
+  setSeatUnknown(!deps.profile.seatKnown);
+  datasets.clear();
+  datasets.set(deps.profile.id, Promise.resolve(dataset));
   rootRef = root;
   settings = store.loadSettings();
   const urlLang = new URLSearchParams(location.search).get("lang");
@@ -665,20 +684,108 @@ export function initApp(root: HTMLElement, dataset: Dataset, registry: StationRe
     if (modalPopstate(ev.state)) return; // Back closed a dialog; the page under it stays
     const searched = queryFromUrl();
     const state = entryState();
-    // Restore the FORM and tab from this entry's snapshot (the bare landing's is landingForm
-    // when set), then the RESULTS from the URL; an entry with no snapshot uses the URL.
-    const formQuery = (!store.urlHasQuery() && landingForm) || state.form || searched;
-    // The URL decides the SCREEN: a renderable query, or the saved-trips page, is a results
-    // page; anything else is the form screen, where renderSearch shows no results.
-    const onResults = queryIsRenderable(searched) || Boolean(state.saved);
-    query = formQuery;
-    syncFormFromQuery();
-    query = onResults ? searched : formQuery;
-    runSearch(state.scroll);
-    // On mobile the form and the results are two different screens. Back/Forward must
-    // move between them too, following the URL (onResults), not `query`.
-    setMobileForm(!onResults);
+    if (!switchPass(searched.card, () => restoreEntry(searched, state))) restoreEntry(searched, state);
   });
+}
+
+/** Show the history entry Back/Forward landed on: its form, tab and results. */
+function restoreEntry(searched: SearchQuery, state: Partial<HistoryState>): void {
+  // Restore the FORM and tab from this entry's snapshot (the bare landing's is landingForm
+  // when set), then the RESULTS from the URL; an entry with no snapshot uses the URL.
+  const formQuery = (!store.urlHasQuery() && landingForm) || state.form || searched;
+  // The URL decides the SCREEN: a renderable query, or the saved-trips page, is a results
+  // page; anything else is the form screen, where renderSearch shows no results.
+  const onResults = queryIsRenderable(searched) || Boolean(state.saved);
+  query = formQuery;
+  syncFormFromQuery();
+  query = onResults ? searched : formQuery;
+  runSearch(state.scroll);
+  // On mobile the form and the results are two different screens. Back/Forward must
+  // move between them too, following the URL (onResults), not `query`.
+  setMobileForm(!onResults);
+}
+
+// Each pass's timetable, by profile id, once asked for: switching back is instant.
+const datasets = new Map<string, Promise<Dataset>>();
+// Bumped by every switchPass, so a slow load the user has since moved on from is dropped.
+let passSwitchToken = 0;
+// Another pass's trains are loading: searches wait for them (switchPass re-runs its own).
+let passPending = false;
+
+/**
+ * A pass whose trains aren't the ones loaded (MAX ↔ Interrail) needs the other timetable:
+ * load it while the page stays up (the results dim under a spinner until the next search
+ * paints), swap it in, then call `done`. Returns true when that is under way, false when
+ * the loaded trains already fit.
+ */
+function switchPass(card: CardType, done: () => void): boolean {
+  const token = ++passSwitchToken;
+  const profile = profileForCard(card);
+  if (profile.id === deps.profile.id) {
+    passPending = false; // back to the loaded pass before the other one arrived
+    return false;
+  }
+  let pending = datasets.get(profile.id);
+  if (!pending) {
+    pending = loadDataset(profile, trainApiBase());
+    datasets.set(profile.id, pending);
+    pending.catch(() => datasets.delete(profile.id));
+  }
+  passPending = true;
+  setPassLoading(true);
+  pending.then(
+    (dataset) => {
+      if (token !== passSwitchToken) return;
+      passPending = false;
+      useDataset(dataset);
+      done();
+    },
+    (err: unknown) => {
+      if (token !== passSwitchToken) return;
+      console.error(err);
+      passPending = false;
+      setPassLoading(false);
+      showPostcard({
+        title: t("err_load"),
+        message: t(`card_${card}`),
+        actionLabel: t("act_retry"),
+        onAction: () => void switchPass(card, done),
+      });
+    },
+  );
+  return true;
+}
+
+/** Make `dataset` the trains every search reads, and the stations the form suggests. */
+function useDataset(dataset: Dataset): void {
+  deps = {
+    ...deps,
+    trains: dataset.trains,
+    meta: dataset.meta,
+    profile: dataset.profile ?? SNCF_PROFILE,
+    apiBase: dataset.apiBase ?? "",
+  };
+  setSeatUnknown(!deps.profile.seatKnown);
+  deps.registry.setPresent(dataset.trains.flatMap((tr) => [tr.origin, tr.destination]));
+  formApi.setStationLabels(deps.registry.list().map((s) => s.label));
+  const updated = rootRef.querySelector(".updated");
+  if (updated) updated.textContent = footerUpdatedText();
+  deferFormCalRepaint();
+}
+
+/** Dim the page's results under a spinner while another pass's timetable loads and searches. */
+function setPassLoading(on: boolean): void {
+  rootRef.classList.toggle("pass-loading", on);
+  refs.results.setAttribute("aria-busy", String(on));
+  rootRef.querySelector(".pass-spinner")?.remove();
+  if (on) {
+    rootRef.append(
+      el("div", { class: "pass-spinner", attrs: { role: "status", "aria-label": t("loading") } }, [
+        el("span", { class: "spinner", attrs: { "aria-hidden": "true" } }),
+        el("span", { text: t("loading") }),
+      ]),
+    );
+  }
 }
 
 /**
@@ -1070,7 +1177,7 @@ function readQueryFromForm(): SearchQuery {
           .filter((l) => l.from && l.to)
       : undefined,
     date: refs.date.value || query.date,
-    card: refs.card.value === "senior" ? "senior" : "jeune",
+    card: parseCard(refs.card.value),
     departAfter: refs.departAfter.value || undefined,
     departBefore: refs.departBefore.value || undefined,
     arriveBefore: refs.arriveBefore.value || undefined,
@@ -1708,11 +1815,13 @@ function cancelLoading(): boolean {
     pendingRaf = 0;
   }
   clear(refs.results); // drop the spinner — the search is abandoned
+  setPassLoading(false);
   return true;
 }
 
 /** Run the current query and render it; `scrollTo` puts the list back at that offset. */
 function runSearch(scrollTo?: number): void {
+  if (passPending) return; // switchPass searches once the pass's trains are in
   searchToken++;
   const token = searchToken;
   searchLoading = true;
@@ -1721,14 +1830,19 @@ function runSearch(scrollTo?: number): void {
     cancelAnimationFrame(pendingRaf);
     pendingRaf = 0;
   }
-  clear(refs.results);
-  // Delayed spinner: CSS keeps it invisible for 150ms, so instant searches never
-  // flash it, while heavy modes show it.
-  refs.results.append(
-    el("div", { class: "loading", attrs: { role: "status", "aria-label": t("loading") } }, [
-      el("span", { class: "spinner", attrs: { "aria-hidden": "true" } }),
-    ]),
-  );
+  // Right after a pass switch, the previous results stay up, dimmed under the pass's
+  // spinner, until these are ready: the page never goes blank in between.
+  const switching = rootRef.classList.contains("pass-loading");
+  if (!switching) {
+    clear(refs.results);
+    // Delayed spinner: CSS keeps it invisible for 150ms, so instant searches never
+    // flash it, while heavy modes show it.
+    refs.results.append(
+      el("div", { class: "loading", attrs: { role: "status", "aria-label": t("loading") } }, [
+        el("span", { class: "spinner", attrs: { "aria-hidden": "true" } }),
+      ]),
+    );
+  }
   // Two frames so the spinner paints before the (now mostly cache-hit) render swaps in.
   const paint = (): void => {
     pendingRaf = requestAnimationFrame(() => {
@@ -1738,6 +1852,7 @@ function runSearch(scrollTo?: number): void {
         searchLoading = false;
         clear(refs.results);
         renderSearch();
+        if (switching) setPassLoading(false);
         if (scrollTo !== undefined) scrollListTo(scrollTo);
       });
     });
@@ -1751,7 +1866,7 @@ function runSearch(scrollTo?: number): void {
   // Otherwise pre-compute the heavy search primitives on the background worker so the
   // main thread stays responsive; the render then reads them straight from cache. If
   // the worker can't help, warmSearch resolves quickly and the render computes on-thread.
-  void warmSearch(deps.trains, query, today).then(() => {
+  void warmSearch(deps.trains, query, today, deps.apiBase).then(() => {
     if (token !== searchToken) return;
     paint();
   });
@@ -1874,6 +1989,10 @@ function renderSearch(): void {
 
   // MAX SENIOR free tickets are weekday-only — flag a weekend outbound, and (round trip)
   // a weekend RETURN on a later day, since either leg must be booked free.
+  // No open data says whether an Interrail seat is left: say so above every result.
+  if (!deps.profile.seatKnown) {
+    refs.results.append(el("p", { class: "notice", text: `${t("interrail_seat_notice")} ${t("how_ir_home")}` }));
+  }
   if (query.card === "senior") {
     if (isWeekend(query.date)) {
       refs.results.append(el("p", { class: "notice", text: t("senior_weekend_warn") }));
@@ -1881,6 +2000,22 @@ function renderSearch(): void {
     const retDay = query.returnDate;
     if (tripIsRound() && retDay && retDay !== query.date && isWeekend(retDay)) {
       refs.results.append(el("p", { class: "notice", text: t("senior_weekend_return_warn") }));
+    }
+  }
+
+  // An exact trip says what the train saves in CO₂ against driving or flying it.
+  if (query.mode === "od" && query.origin && query.destination) {
+    const km = stationDistanceKm(query.origin, query.destination);
+    if (Number.isFinite(km) && km >= 1) {
+      const co2 = tripCo2(Math.round(km));
+      const fmt = new Intl.NumberFormat(getLang());
+      const kg = (v: number) => fmt.format(v < 10 ? Math.round(v * 10) / 10 : Math.round(v));
+      refs.results.append(
+        el("p", {
+          class: "eco-line",
+          text: t("eco_trip", { train: kg(co2.train), car: kg(co2.car), plane: kg(co2.plane), km: fmt.format(co2.km) }),
+        }),
+      );
     }
   }
 
@@ -3810,6 +3945,9 @@ function buildLayout(root: HTMLElement): void {
     overnightMaxConnectionMin: OVERNIGHT_MAX_CONNECTION_MIN,
     jeuneUrl: MAX_JEUNE_URL,
     seniorUrl: MAX_SENIOR_URL,
+    interrailUrl: INTERRAIL_FRANCE_URL,
+    interrailPassUrl: INTERRAIL_PASS_URL,
+    ecoUrl: ADEME_CO2_URL,
     resolveStation,
     stationLabel: (id) => deps.registry.label(id),
     mode: () => query.mode,
@@ -3860,7 +3998,7 @@ function buildLayout(root: HTMLElement): void {
       store.saveSettings(settings);
       query = { ...query, card };
       store.updateUrl(query);
-      runSearch();
+      if (!switchPass(card, () => runSearch())) runSearch();
     },
     onShare: (onCopied) => void shareCurrentUrl(onCopied),
     onInstall: () => void promptInstall(),
